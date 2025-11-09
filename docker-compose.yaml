@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: investment_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: investments
+    volumes:
+      - pgdata:/var/lib/postgresql
+    ports:
+      - "5434:5432"
+
+volumes:
+  pgdata:
+
