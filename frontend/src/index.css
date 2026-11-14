@@ -1,0 +1,167 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #f4f6f8;
+  color: #1c2733;
+}
+
+.page {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 20px 14px 48px;
+}
+
+.heading h1 { margin: 8px 0 4px; font-size: 1.6rem; }
+.heading p { margin: 0 0 16px; color: #5a6a78; }
+
+.card {
+  background: #fff;
+  border: 1px solid #dde3e8;
+  border-radius: 12px;
+  padding: 18px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(20, 40, 60, 0.06);
+}
+
+.field { display: block; margin-bottom: 14px; }
+.field span, .field legend { display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.95rem; }
+fieldset.field { border: 0; padding: 0; margin: 0 0 14px; }
+
+.field input[type="text"],
+.field input[type="number"],
+.field input[type="date"],
+.field select {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 1rem;
+  border: 1px solid #b9c6cf;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 420px) { .row2 { grid-template-columns: 1fr; } }
+
+.total { margin: 0 0 14px; color: #33475b; }
+
+.pills { display: flex; gap: 8px; }
+.pill {
+  border: 1px solid #b9c6cf;
+  border-radius: 999px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.pill input { display: none; }
+.pill.active { background: #14532d; border-color: #14532d; color: #fff; }
+
+.submit {
+  width: 100%;
+  padding: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  background: #14532d;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.submit:hover { background: #0f4023; }
+
+.error { color: #b3261e; font-weight: 600; }
+.notice {
+  background: #e7f4ea;
+  border: 1px solid #b7dfc0;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.tickets-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.tickets-head h2 { margin: 0; font-size: 1.1rem; }
+.tickets-head button, td button {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #b9c6cf;
+  background: #fff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.table-wrap { overflow-x: auto; margin-top: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e3e9ee; white-space: nowrap; }
+
+.hint { color: #5a6a78; font-size: 0.85rem; margin-bottom: 0; }
+
+/* --- SPA shell + portfolio dashboard --- */
+.page.wide { max-width: 880px; }
+
+.tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.tab {
+  padding: 9px 18px;
+  border-radius: 999px;
+  border: 1px solid #b9c6cf;
+  background: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+.tab.active { background: #14532d; border-color: #14532d; color: #fff; }
+
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+@media (max-width: 560px) { .stats { grid-template-columns: 1fr; } }
+.stat {
+  background: #fff; border: 1px solid #dde3e8; border-radius: 12px;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
+}
+.stat-label { color: #5a6a78; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.stat-value { font-size: 1.35rem; font-weight: 800; }
+
+.charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 8px; }
+@media (max-width: 700px) { .charts { grid-template-columns: 1fr; } }
+.charts .card h2, .section-title { font-size: 1.1rem; margin: 4px 0 12px; }
+.section-title { margin-top: 14px; }
+
+.donut-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.donut { width: 190px; height: 190px; }
+.donut-total { font-size: 1.15rem; font-weight: 800; fill: #1c2733; }
+.donut-sub { font-size: 0.62rem; fill: #5a6a78; }
+.legend { list-style: none; margin: 0; padding: 0; width: 100%; }
+.legend li { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 0.92rem; }
+.swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.legend-label { flex: 1; }
+.legend-value { color: #33475b; font-weight: 600; }
+
+.gainbars { display: flex; flex-direction: column; gap: 7px; }
+.gainbar-row { display: grid; grid-template-columns: 52px 1fr 74px; align-items: center; gap: 8px; font-size: 0.9rem; }
+.gainbar-ticker { font-weight: 700; }
+.gainbar-track { position: relative; height: 14px; background: #eef2f5; border-radius: 4px; }
+.gainbar-zero { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #9fb0bd; }
+.gainbar-fill { position: absolute; top: 2px; bottom: 2px; border-radius: 3px; }
+.gainbar-fill.pos { background: #178a4c; }
+.gainbar-fill.neg { background: #c0392b; }
+.gainbar-value { text-align: right; font-weight: 700; }
+.up { color: #178a4c; }
+.down { color: #c0392b; }
+
+.holdings { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.holding {
+  background: #fff; border: 1px solid #dde3e8; border-radius: 12px;
+  padding: 14px 16px; box-shadow: 0 1px 3px rgba(20, 40, 60, 0.06);
+}
+.holding.buy { border-color: #178a4c; box-shadow: 0 0 0 1px #178a4c inset, 0 1px 3px rgba(20, 40, 60, 0.06); }
+.holding-head { display: flex; justify-content: space-between; align-items: center; }
+.holding-ticker { font-size: 1.25rem; font-weight: 800; }
+.chip-sector { border: 1px solid; border-radius: 999px; padding: 2px 9px; font-size: 0.78rem; font-weight: 700; }
+.holding-name { margin: 2px 0 8px; color: #5a6a78; font-size: 0.9rem; min-height: 1.1em; }
+.holding-price { margin: 0 0 10px; font-size: 1.05rem; font-weight: 700; }
+.delta { font-size: 0.85rem; font-weight: 700; }
+.holding-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin: 0 0 10px; }
+.holding-stats dt { color: #5a6a78; font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+.holding-stats dd { margin: 0; font-weight: 700; }
+.holding-foot { margin: 0; font-size: 0.9rem; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.muted { color: #5a6a78; }
+.badge { background: #178a4c; color: #fff; border-radius: 999px; padding: 2px 9px; font-size: 0.75rem; font-weight: 700; }
+
+.footnote { color: #5a6a78; font-size: 0.85rem; margin-top: 16px; }
