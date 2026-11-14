@@ -243,7 +243,7 @@ function round3_(v) { return Math.round(v * 1000) / 1000; }
 // setup instructions instead of a chat.
 // ---------------------------------------------------------------------------
 
-var CONSULT_MODEL = 'gemini-2.5-flash';
+var CONSULT_MODEL = 'gemini-3.8-flash';
 var CONSULT_MAX_TURNS = 10;
 
 function doPost(e) {

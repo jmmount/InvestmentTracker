@@ -109,7 +109,7 @@ One-time setup, in the Apps Script editor:
 Until the property exists, the endpoint answers
 `{ ok: false, error: 'not_configured' }` and the view shows setup guidance
 instead of failing. The model is the `CONSULT_MODEL` constant at the top
-of the consultation section in `Code.gs` (`gemini-2.5-flash`).
+of the consultation section in `Code.gs` (`gemini-3.8-flash`).
 
 ## Getting a submitted ticket into the workbook
 
