@@ -165,3 +165,16 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e3e9ee; w
 .badge { background: #178a4c; color: #fff; border-radius: 999px; padding: 2px 9px; font-size: 0.75rem; font-weight: 700; }
 
 .footnote { color: #5a6a78; font-size: 0.85rem; margin-top: 16px; }
+
+/* Consultation chat */
+.chat-log { display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto; padding: 6px 2px; margin-bottom: 10px; }
+.msg { max-width: 85%; padding: 8px 12px; border-radius: 12px; line-height: 1.45; white-space: normal; }
+.msg.user { align-self: flex-end; background: #14532d; color: #fff; border-bottom-right-radius: 4px; }
+.msg.model { align-self: flex-start; background: #eef3ee; color: #1c2733; border-bottom-left-radius: 4px; }
+.msg.muted { color: #5a6a78; font-style: italic; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.chip { border: 1px solid #b9c6bb; background: #fff; color: #14532d; border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: 0.88rem; }
+.chip:hover { background: #eef3ee; }
+.chat-form { display: flex; gap: 8px; }
+.chat-form input { flex: 1; padding: 10px 12px; border: 1px solid #b9c6bb; border-radius: 8px; font-size: 1rem; }
+.chat-form .submit { margin: 0; }

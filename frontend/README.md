@@ -88,6 +88,29 @@ its last `populate_market_data.py` run (prices are the last close at that
 moment); a ticker bought since then shows with CurrentValue/seed fallback
 values until the next populate run.
 
+## Consultation view (chat with a model about the portfolio)
+
+The third tab chats with a Gemini model about the portfolio. The browser
+talks only to the Apps Script endpoint; the script grounds the model in
+the live portfolio payload and calls Gemini server-side. **The API key
+lives only in the script's Script Properties — never in this repo, the
+frontend, or the script source.**
+
+One-time setup, in the Apps Script editor:
+
+1. Create a **dedicated** AI Studio API key for this app at
+   aistudio.google.com/apikey (do not reuse other keys — e.g. a teaching
+   key — here).
+2. **Project Settings (gear) → Script Properties → Add script property:**
+   name `GEMINI_API_KEY`, value = the key.
+3. Deploy the change: **Deploy → Manage deployments → edit → New
+   version** (URL unchanged).
+
+Until the property exists, the endpoint answers
+`{ ok: false, error: 'not_configured' }` and the view shows setup guidance
+instead of failing. The model is the `CONSULT_MODEL` constant at the top
+of the consultation section in `Code.gs` (`gemini-2.5-flash`).
+
 ## Getting a submitted ticket into the workbook
 
 **Copy/download mode (the only mode for now)** — each ticket is listed
@@ -96,8 +119,10 @@ row in workbook column order, ready to paste into the RawData tab) or
 **Download CSV** for the whole session.
 
 Ticket POSTs are deliberately disabled (`TICKET_POST_ENABLED = false` in
-`src/config.js`) even when the read URL is configured: the write phase —
-a `doPost` in the Apps Script guarded by a write token typed into the app —
+`src/config.js`) even when the read URL is configured: the endpoint's
+`doPost` answers only the `consult` action and rejects everything else.
+The write phase — a ticket action in the Apps Script guarded by a write
+token typed into the app —
 is a separate, later step. When it lands, the app will POST each ticket as
 JSON with keys `timestamp, ticker, date, shares, price, sector,
 purchaseType`.

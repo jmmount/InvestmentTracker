@@ -25,8 +25,9 @@
 // Cost basis convention (Jason, 2026-11-12): cost counts CASH purchase lots
 // only. Reinvested-dividend lots add shares and value, but not cost.
 //
-// There is deliberately NO doPost in this phase: purchase-ticket writes are
-// a separate, later step that will add a write token check before appending.
+// doPost exists for ONE action only: "consult" (the Consultation chat view).
+// Purchase-ticket writes are NOT handled here — they remain a separate,
+// later step that will add a write-token check before appending to RawData.
 // ---------------------------------------------------------------------------
 
 // Nothing about individual tickers is hardcoded here. Company names,
@@ -37,6 +38,27 @@
 
 function doGet(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (e && e.parameter && e.parameter.view === 'meta') {
+    var agg = aggregateLots_(ss);
+    return jsonOutput_({
+      meta: {
+        tickers: Object.keys(agg.byTicker).sort(),
+        sectors: agg.sectors.slice().sort(),
+        purchase_types: agg.purchaseTypes
+      }
+    });
+  }
+  return jsonOutput_(buildPayload_(ss));
+}
+
+function jsonOutput_(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// The full portfolio payload (used by doGet and by the consultation view).
+function buildPayload_(ss) {
   var agg = aggregateLots_(ss);
   var byTicker = agg.byTicker;
   // The form's dropdown values are DERIVED from CleanData, never hardcoded:
@@ -46,11 +68,6 @@ function doGet(e) {
     sectors: agg.sectors.slice().sort(),
     purchase_types: agg.purchaseTypes
   };
-  if (e && e.parameter && e.parameter.view === 'meta') {
-    return ContentService
-      .createTextOutput(JSON.stringify({ meta: meta }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
   var prices = readCurrentPrices_(ss);
   var market = readMarketData_(ss);
 
@@ -121,9 +138,7 @@ function doGet(e) {
     meta: meta
   };
 
-  return ContentService
-    .createTextOutput(JSON.stringify(payload))
-    .setMimeType(ContentService.MimeType.JSON);
+  return payload;
 }
 
 // CurrentValue pivot -> { TICKER: current share price }
@@ -216,3 +231,120 @@ function toNumber_(v) {
 
 function round2_(v) { return Math.round(v * 100) / 100; }
 function round3_(v) { return Math.round(v * 1000) / 1000; }
+
+// ---------------------------------------------------------------------------
+// Consultation view — chat with a Gemini model about this portfolio.
+//
+// The API key NEVER appears in this file, the frontend, or the repo: it
+// lives in Script Properties (Project Settings -> Script Properties) under
+// GEMINI_API_KEY, set by Jason in the editor. Use a DEDICATED AI Studio key
+// for this app — not the teaching-feedback key. Without the property, the
+// action returns { ok: false, error: 'not_configured' } and the view shows
+// setup instructions instead of a chat.
+// ---------------------------------------------------------------------------
+
+var CONSULT_MODEL = 'gemini-2.5-flash';
+var CONSULT_MAX_TURNS = 10;
+
+function doPost(e) {
+  var body = {};
+  try {
+    body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+  } catch (err) {
+    return jsonOutput_({ ok: false, error: 'bad_json' });
+  }
+  if (body.action === 'consult') return jsonOutput_(consult_(body));
+  return jsonOutput_({ ok: false, error: 'unknown_action' });
+}
+
+function consult_(body) {
+  var key = PropertiesService.getScriptProperties()
+    .getProperty('GEMINI_API_KEY');
+  if (!key) {
+    return {
+      ok: false,
+      error: 'not_configured',
+      message: 'Consultation is not configured yet: add a GEMINI_API_KEY ' +
+        'script property in the Apps Script editor (Project Settings -> ' +
+        'Script Properties), then deploy a new version.'
+    };
+  }
+
+  var msgs = (body.messages || []).filter(function (m) {
+    return m && typeof m.text === 'string' && m.text.trim() &&
+      (m.role === 'user' || m.role === 'model');
+  }).slice(-CONSULT_MAX_TURNS);
+  if (!msgs.length) return { ok: false, error: 'empty_conversation' };
+
+  var p = buildPayload_(SpreadsheetApp.getActiveSpreadsheet());
+  var context = {
+    as_of: p.as_of,
+    market_as_of: p.market_as_of,
+    total_value: p.total_value,
+    total_cost: p.total_cost,
+    total_gain: p.total_gain,
+    total_gain_pct: p.total_gain_pct,
+    cost_basis: p.cost_basis,
+    total_dividend_reinvested: p.total_dividend_reinvested,
+    sectors: p.sectors,
+    buy_candidates: p.buy_candidates,
+    positions: p.positions.map(function (x) {
+      return {
+        ticker: x.ticker, name: x.name, sector: x.sector,
+        shares: x.shares, price: x.price, value: x.value, cost: x.cost,
+        gain: x.gain, gain_pct: x.gain_pct,
+        day_change_pct: x.day_change_pct, week_change_pct: x.week_change_pct,
+        graham: x.graham, below_graham: x.below_graham
+      };
+    })
+  };
+
+  var system =
+    'You are the consultation assistant built into a personal ' +
+    'Investment Tracker app, discussing his own portfolio with him. ' +
+    'The JSON below is his live portfolio, aggregated from his workbook ' +
+    '(cost basis = cash purchases only; reinvested dividends excluded ' +
+    'from cost but their shares count in value). Ground every figure in ' +
+    'that data; if something is not in the data, say so plainly instead ' +
+    'of inventing it. The Graham number is sqrt(22.5 x trailing EPS x ' +
+    'book value); holdings priced below it are flagged as buy candidates ' +
+    'by the app. Explain concepts, compare holdings, and talk through ' +
+    'scenarios he raises. You are not a licensed financial advisor: ' +
+    'treat this as educational discussion, not personalized advice, and ' +
+    'do not promise returns. Keep answers focused and readable in a ' +
+    'chat pane: short paragraphs or brief lists, no tables. ' +
+    'Portfolio JSON: ' + JSON.stringify(context);
+
+  var contents = msgs.map(function (m) {
+    return { role: m.role, parts: [{ text: m.text }] };
+  });
+
+  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
+    CONSULT_MODEL + ':generateContent?key=' + encodeURIComponent(key);
+  var resp = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify({
+      system_instruction: { parts: [{ text: system }] },
+      contents: contents
+    }),
+    muteHttpExceptions: true
+  });
+
+  var data = {};
+  try { data = JSON.parse(resp.getContentText()); } catch (err) { }
+  if (resp.getResponseCode() !== 200) {
+    return {
+      ok: false,
+      error: 'gemini_error',
+      status: resp.getResponseCode(),
+      message: (data.error && data.error.message) ||
+        'The model request failed.'
+    };
+  }
+  var parts = (data.candidates && data.candidates[0] &&
+    data.candidates[0].content && data.candidates[0].content.parts) || [];
+  var text = parts.map(function (x) { return x.text || ''; }).join('');
+  if (!text) return { ok: false, error: 'empty_reply' };
+  return { ok: true, reply: text };
+}

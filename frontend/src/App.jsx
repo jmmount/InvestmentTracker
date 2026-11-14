@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Portfolio from './views/Portfolio.jsx'
 import PurchaseTicket from './views/PurchaseTicket.jsx'
+import Consultation from './views/Consultation.jsx'
 import { usePortfolio } from './data-portfolio.js'
 
 export default function App() {
@@ -19,10 +20,13 @@ export default function App() {
         <button type="button" className={view === 'ticket' ? 'tab active' : 'tab'} onClick={() => setView('ticket')}>
           Purchase Ticket
         </button>
+        <button type="button" className={view === 'consult' ? 'tab active' : 'tab'} onClick={() => setView('consult')}>
+          Consultation
+        </button>
       </nav>
-      {view === 'portfolio'
-        ? <Portfolio data={pf.data} source={pf.source} loading={pf.loading} />
-        : <PurchaseTicket meta={pf.meta} />}
+      {view === 'portfolio' && <Portfolio data={pf.data} source={pf.source} loading={pf.loading} />}
+      {view === 'ticket' && <PurchaseTicket meta={pf.meta} />}
+      {view === 'consult' && <Consultation />}
     </main>
   )
 }
