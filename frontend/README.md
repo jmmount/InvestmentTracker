@@ -17,30 +17,87 @@ the frontend. Two views:
 
 ## Data
 
-`src/data-portfolio.js` is the data layer. For now it holds a baked-in
-snapshot exported from `snapshot.py`'s `latest.json` (see its `as_of`).
-That module is the single seam where the live spreadsheet connection plugs
-in later: swap the static export for a fetch of the same shape and the
-views do not change.
+`src/data-portfolio.js` is the data layer, with two sources:
+
+- **Live read (when configured)** — the Portfolio view fetches portfolio
+  JSON from the Apps Script web app bound to the workbook
+  (`apps-script/Code.gs`, `doGet`): holdings, shares and cost aggregated
+  from the CleanData lots (cost = cash lots only; reinvested dividends add
+  shares/value, not cost), prices from the workbook's own CurrentValue
+  pivot.
+- **Seed snapshot (fallback)** — a baked-in export of `snapshot.py`'s
+  `latest.json` (see its `as_of`). Used when no endpoint is configured or
+  the fetch fails, so the page never goes blank.
+
+The payload also carries a `meta` block — the Purchase Ticket's dropdown
+values (tickers, sectors, purchase types) **derived by the script from
+CleanData's distinct values**, never hardcoded. A ticker or sector that
+appears in the lots shows up in the form automatically. The lists in
+`src/config.js` are only the offline fallback for when the endpoint is not
+configured or unreachable.
+
+Prices, Graham numbers and day/week moves come from the workbook's
+**MarketData tab**, populated by the Python functions in
+`~/workspace/investments/market_data/` — one file per function
+(`graham.py`: `get_graham_number`, via yfinance trailing EPS and book
+value; `prices.py`: `get_price_snapshot`, latest/prev/week closes), each
+runnable standalone for troubleshooting, plus `populate_market_data.py`,
+which reads the held tickers from CleanData and writes the tab. Graham's
+formula is `sqrt(22.5 × EPS × BVPS)`; mutual funds get no Graham number.
+The endpoint prefers MarketData prices and falls back to the CurrentValue
+pivot for a ticker with no MarketData row yet; the seed snapshot remains
+the final fallback for any field the workbook cannot supply.
+
+## Credentials — there are none in this repo
+
+- The Apps Script runs **as the workbook owner**; Google holds the access
+  server-side. No API key, service account or OAuth secret exists in the
+  frontend or in `Code.gs` — by design, and never add one.
+- The web app URL is the only capability the frontend holds. It is read
+  from `VITE_SHEET_ENDPOINT` in a **gitignored `.env` file** (copy
+  `.env.example`), so the URL never enters the source or git history.
+- Revocation = redeploy the web app (a new URL) and update `.env`.
 
 ## Run it
 
 ```bash
+cp .env.example .env   # then paste the web app URL into .env
 npm install
 npm run dev      # local dev server (Vite)
 npm run build    # production build into dist/
 ```
 
+## Deploying the read endpoint (one time, ~2 minutes)
+
+In the "Investments (Responses)" workbook:
+
+1. **Extensions → Apps Script**, delete any placeholder code, and paste in
+   the whole of `apps-script/Code.gs`.
+2. **Deploy → New deployment → Web app**, with **Execute as: Me** and
+   **Who has access: Anyone**. Approve the authorization prompt (it is your
+   own script reading your own workbook).
+3. Copy the web app URL into `.env` as `VITE_SHEET_ENDPOINT` and restart
+   `npm run dev`. The Portfolio footnote switches to "Live from the
+   Investments workbook…" when the fetch succeeds.
+
+To update the script later: paste the new code, then **Deploy → Manage
+deployments → edit → New version** — the URL stays the same.
+
+Known limits of the read phase: the MarketData tab is only as fresh as
+its last `populate_market_data.py` run (prices are the last close at that
+moment); a ticker bought since then shows with CurrentValue/seed fallback
+values until the next populate run.
+
 ## Getting a submitted ticket into the workbook
 
-Set in `src/config.js`:
+**Copy/download mode (the only mode for now)** — each ticket is listed
+under "Tickets this session" with a **Copy row** button (a tab-separated
+row in workbook column order, ready to paste into the RawData tab) or
+**Download CSV** for the whole session.
 
-1. **Copy/download mode (default, `SHEET_ENDPOINT = ""`)** — each ticket is
-   listed under "Tickets this session" with a **Copy row** button (a
-   tab-separated row in workbook column order, ready to paste into the
-   RawData tab) or **Download CSV** for the whole session.
-2. **Endpoint mode** — set `SHEET_ENDPOINT` to a Google Apps Script web app
-   URL (or any HTTPS endpoint) that appends a row to the workbook; the app
-   POSTs each ticket as JSON with keys `timestamp, ticker, date, shares,
-   price, sector, purchaseType`. (The Apps Script side is a small
-   follow-up.)
+Ticket POSTs are deliberately disabled (`TICKET_POST_ENABLED = false` in
+`src/config.js`) even when the read URL is configured: the write phase —
+a `doPost` in the Apps Script guarded by a write token typed into the app —
+is a separate, later step. When it lands, the app will POST each ticket as
+JSON with keys `timestamp, ticker, date, shares, price, sector,
+purchaseType`.

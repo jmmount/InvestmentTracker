@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { SHEET_ENDPOINT, TICKERS, SECTORS, PURCHASE_TYPES } from '../config.js'
+import { SHEET_ENDPOINT, TICKET_POST_ENABLED, TICKERS as FALLBACK_TICKERS, SECTORS as FALLBACK_SECTORS, PURCHASE_TYPES as FALLBACK_PURCHASE_TYPES } from '../config.js'
 
 // Workbook column order (RawData / CleanData):
 // Timestamp | Ticker | Date | Number of Shares | Purchase Price | Sector | Purchase Type
@@ -41,7 +41,13 @@ function csvEscape(v) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
-export default function PurchaseTicket() {
+export default function PurchaseTicket({ meta }) {
+  // Dropdown values are derived from the workbook's CleanData tab by the
+  // read endpoint (meta) whenever it answered; the config lists are only
+  // the offline fallback, mirroring the workbook as of 2026-11-13.
+  const TICKERS = meta && meta.tickers && meta.tickers.length ? meta.tickers : FALLBACK_TICKERS
+  const SECTORS = meta && meta.sectors && meta.sectors.length ? meta.sectors : FALLBACK_SECTORS
+  const PURCHASE_TYPES = meta && meta.purchase_types && meta.purchase_types.length ? meta.purchase_types : FALLBACK_PURCHASE_TYPES
   const [tickerChoice, setTickerChoice] = useState('')
   const [customTicker, setCustomTicker] = useState('')
   const [date, setDate] = useState(todayISO())
@@ -83,10 +89,10 @@ export default function PurchaseTicket() {
       price: String(price).trim(),
       sector,
       purchaseType,
-      status: SHEET_ENDPOINT ? 'sending' : 'ready',
+      status: SHEET_ENDPOINT && TICKET_POST_ENABLED ? 'sending' : 'ready',
     }
 
-    if (SHEET_ENDPOINT) {
+    if (SHEET_ENDPOINT && TICKET_POST_ENABLED) {
       try {
         const res = await fetch(SHEET_ENDPOINT, {
           method: 'POST',

@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import Portfolio from './views/Portfolio.jsx'
 import PurchaseTicket from './views/PurchaseTicket.jsx'
+import { usePortfolio } from './data-portfolio.js'
 
 export default function App() {
   const [view, setView] = useState('portfolio')
+  const pf = usePortfolio()
   return (
     <main className="page wide">
       <header className="heading">
@@ -18,7 +20,9 @@ export default function App() {
           Purchase Ticket
         </button>
       </nav>
-      {view === 'portfolio' ? <Portfolio /> : <PurchaseTicket />}
+      {view === 'portfolio'
+        ? <Portfolio data={pf.data} source={pf.source} loading={pf.loading} />
+        : <PurchaseTicket meta={pf.meta} />}
     </main>
   )
 }

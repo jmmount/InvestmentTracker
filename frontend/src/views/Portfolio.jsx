@@ -1,4 +1,3 @@
-import { PORTFOLIO } from '../data-portfolio.js'
 import { DonutChart, GainBars, sectorColor } from '../components/charts.jsx'
 
 const money = (v, digits = 2) =>
@@ -6,7 +5,6 @@ const money = (v, digits = 2) =>
 const signedPct = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}%`
 
 function HoldingCard({ p, isBuyCandidate }) {
-  const dayUp = p.day_change_pct >= 0
   return (
     <article className={isBuyCandidate ? 'holding buy' : 'holding'}>
       <div className="holding-head">
@@ -17,7 +15,12 @@ function HoldingCard({ p, isBuyCandidate }) {
       </div>
       <p className="holding-name">{p.name.trim()}</p>
       <p className="holding-price">
-        {money(p.price)} <span className={dayUp ? 'delta up' : 'delta down'}>{signedPct(p.day_change_pct)} today</span>
+        {money(p.price)}{' '}
+        {p.day_change_pct != null && (
+          <span className={p.day_change_pct >= 0 ? 'delta up' : 'delta down'}>
+            {signedPct(p.day_change_pct)} today
+          </span>
+        )}
       </p>
       <dl className="holding-stats">
         <div><dt>Shares</dt><dd>{p.shares}</dd></div>
@@ -42,8 +45,7 @@ function HoldingCard({ p, isBuyCandidate }) {
   )
 }
 
-export default function Portfolio() {
-  const d = PORTFOLIO
+export default function Portfolio({ data: d, source, loading }) {
   const positions = [...d.positions].sort((a, b) => b.value - a.value)
   return (
     <section>
@@ -76,18 +78,35 @@ export default function Portfolio() {
       </div>
 
       <h2 className="section-title">Holdings</h2>
+      {loading && <p className="muted">Fetching live data from the workbook…</p>}
       <div className="holdings">
         {positions.map((p) => (
           <HoldingCard key={p.ticker} p={p} isBuyCandidate={d.buy_candidates.includes(p.ticker)} />
         ))}
       </div>
 
-      <p className="footnote">
-        Snapshot as of {d.as_of} — prices are the prior close. Cost basis: {d.cost_basis}
-        {' '}Reinvested dividends excluded from cost: {money(d.total_dividend_reinvested)}.
-        Data source: the Investments workbook — the spreadsheet stays the backend;
-        this snapshot is baked in until the live sheet connection is wired.
-      </p>
+      {source === 'live' ? (
+        <p className="footnote">
+          Live from the Investments workbook — holdings, shares and cost aggregated from the
+          CleanData lots by the Apps Script read endpoint. Cost basis: {d.cost_basis}{' '}
+          Reinvested dividends excluded from cost: {money(d.total_dividend_reinvested)}.
+          {d.market_as_of ? (
+            <> Prices, Graham numbers and day/week moves come from the workbook's MarketData
+            tab (yfinance functions, close of {d.market_as_of}).</>
+          ) : (
+            <> Graham numbers and day/week moves are carried from the {d.seed_as_of} snapshot
+            until the workbook's MarketData tab is populated.</>
+          )}
+        </p>
+      ) : (
+        <p className="footnote">
+          Snapshot as of {d.as_of} — prices are the prior close. Cost basis: {d.cost_basis}
+          {' '}Reinvested dividends excluded from cost: {money(d.total_dividend_reinvested)}.
+          Data source: the Investments workbook — the spreadsheet stays the backend;
+          this baked-in snapshot is showing because the live read endpoint is not
+          configured in .env or did not answer.
+        </p>
+      )}
     </section>
   )
 }
