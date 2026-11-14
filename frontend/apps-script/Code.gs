@@ -29,22 +29,11 @@
 // a separate, later step that will add a write token check before appending.
 // ---------------------------------------------------------------------------
 
-var NAMES = {
-  BAC: 'Bank of America Corporation',
-  FBNDX: 'Fidelity Investment Grade Bond Fund',
-  FCBFX: 'Fidelity Corporate Bond Fund',
-  FNILX: 'Fidelity ZERO Large Cap Index Fund',
-  FZILX: 'Fidelity ZERO International Index Fund',
-  GOOGL: 'Alphabet Inc.',
-  KO: 'Coca-Cola Company (The)',
-  NVO: 'Novo Nordisk A/S',
-  PR: 'Permian Resources Corporation',
-  STRL: 'Sterling Infrastructure, Inc.',
-  UMC: 'United Microelectronics Corporation',
-  V: 'Visa Inc.'
-};
-
-var MUTUAL_FUNDS = { FBNDX: true, FCBFX: true, FNILX: true, FZILX: true };
+// Nothing about individual tickers is hardcoded here. Company names,
+// prices and Graham numbers all arrive through the MarketData tab
+// (populated by the market_data Python functions); holdings, sectors and
+// purchase types come from CleanData. A ticker with no MarketData row yet
+// displays as its bare ticker symbol until the next populate run.
 
 function doGet(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -80,14 +69,12 @@ function doGet(e) {
               : ((ticker in prices) ? prices[ticker] : null);
     var value = (price === null) ? null : round2_(a.shares * price);
     var gain = (value === null) ? null : round2_(value - a.cost);
-    var isFund = !!MUTUAL_FUNDS[ticker];
     var graham = m ? m.graham : null;
     var grahamNote = m ? (m.graham_note || '')
-      : (isFund ? 'Mutual fund — no Graham number'
-                : 'No market data yet for this ticker');
+      : 'No market data yet for this ticker';
     positions.push({
       ticker: ticker,
-      name: NAMES[ticker] || ticker,
+      name: (m && m.name) || ticker,
       sector: a.sector,
       shares: round3_(a.shares),
       cost: round2_(a.cost),
@@ -175,6 +162,7 @@ function readMarketData_(ss) {
     var ticker = String(row[col['ticker']] || '').trim().toUpperCase();
     if (!ticker) continue;
     out[ticker] = {
+      name: String(row[col['name']] || ''),
       price: toNumber_(row[col['price']]),
       prev_close: toNumber_(row[col['prevclose']]),
       day_change_pct: toNumber_(row[col['daychangepct']]),
