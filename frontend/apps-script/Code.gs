@@ -326,7 +326,11 @@ function consult_(body) {
     contentType: 'application/json',
     payload: JSON.stringify({
       system_instruction: { parts: [{ text: system }] },
-      contents: contents
+      contents: contents,
+      // Thinking is OFF for this chat (thinkingBudget: 0): a consultation
+      // answer should not burn thinking tokens — or the wait that comes
+      // with them — before it starts. Jason's rule, 2026-11-14.
+      generationConfig: { thinkingConfig: { thinkingBudget: 0 } }
     }),
     muteHttpExceptions: true
   });
