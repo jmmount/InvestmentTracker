@@ -178,3 +178,16 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e3e9ee; w
 .chat-form { display: flex; gap: 8px; }
 .chat-form input { flex: 1; padding: 10px 12px; border: 1px solid #b9c6bb; border-radius: 8px; font-size: 1rem; }
 .chat-form .submit { margin: 0; }
+
+.chart-hover { position: relative; }
+.chart-tip { position: absolute; z-index: 5; pointer-events: none; background: #1c2733; color: #eef3f7; padding: 6px 10px; border-radius: 8px; font-size: 0.85rem; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25); white-space: nowrap; }
+.chart-tip .up { color: #7dd87d; }
+.chart-tip .down { color: #ff9c9c; }
+.history-card { margin-bottom: 8px; }
+.history-card h2 { font-size: 1.1rem; margin: 4px 0 12px; }
+.history-summary { margin: 0 0 8px; font-weight: 600; }
+.history-chart { width: 100%; height: auto; display: block; }
+.history-line { fill: none; stroke: #2f6fed; stroke-width: 2; }
+.history-area { fill: rgba(47, 111, 237, 0.12); }
+.history-dot { fill: #2f6fed; stroke: #fff; stroke-width: 1.5; }
+.axis-label { font-size: 11px; fill: #5a6a78; }

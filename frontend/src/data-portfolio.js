@@ -33,6 +33,7 @@ export const PORTFOLIO = {
   "total_gain_pct": 25.33,
   "cost_basis": "cash purchases only; reinvested dividends excluded (Jason, 2026-11-12)",
   "total_dividend_reinvested": 139.54,
+  "history": [{"date": "2026-11-01", "value": 5877.11}, {"date": "2026-11-02", "value": 5877.11}, {"date": "2026-11-03", "value": 5862.04}, {"date": "2026-11-04", "value": 5845.91}, {"date": "2026-11-05", "value": 6205.66}, {"date": "2026-11-06", "value": 6005.48}, {"date": "2026-11-07", "value": 6036.33}, {"date": "2026-11-08", "value": 6036.33}, {"date": "2026-11-09", "value": 6036.33}, {"date": "2026-11-10", "value": 6140.27}, {"date": "2026-11-11", "value": 6131.05}, {"date": "2026-11-12", "value": 6237.18}, {"date": "2026-11-13", "value": 6221.18}, {"date": "2026-11-14", "value": 6211.53}, {"date": "2026-11-15", "value": 6211.53}, {"date": "2026-11-16", "value": 6211.53}, {"date": "2026-11-17", "value": 6083.51}],
   "sectors": {
     "Technology": 1728.52,
     "Bonds": 1510.01,
@@ -309,6 +310,7 @@ export function mergeLiveWithSeed(live) {
     ...live,
     positions,
     buy_candidates: positions.filter((p) => p.below_graham).map((p) => p.ticker),
+    history: live.history && live.history.length > 1 ? live.history : PORTFOLIO.history,
     seed_as_of: PORTFOLIO.as_of,
   }
 }
