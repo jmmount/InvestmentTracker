@@ -135,7 +135,8 @@ function buildPayload_(ss) {
     buy_candidates: buyCandidates,
     market_as_of: marketAsOf,
     positions: positions,
-    meta: meta
+    meta: meta,
+    history: readHistory_(ss)
   };
 
   return payload;
@@ -351,4 +352,25 @@ function consult_(body) {
   var text = parts.map(function (x) { return x.text || ''; }).join('');
   if (!text) return { ok: false, error: 'empty_reply' };
   return { ok: true, reply: text };
+}
+
+// Optional "History" tab (header row, then date | total_value rows) ->
+// [{date: 'YYYY-MM-DD', value}] ascending. Returns [] when the tab does
+// not exist yet, so the frontend falls back to its baked-in seed history.
+function readHistory_(ss) {
+  var sheet = ss.getSheetByName('History');
+  if (!sheet) return [];
+  var rows = sheet.getDataRange().getValues();
+  var out = [];
+  for (var i = 1; i < rows.length; i++) {
+    var d = rows[i][0];
+    var v = Number(rows[i][1]);
+    if (!d || isNaN(v)) continue;
+    var ds = (d instanceof Date)
+      ? Utilities.formatDate(d, 'America/New_York', 'yyyy-MM-dd')
+      : String(d).slice(0, 10);
+    out.push({ date: ds, value: round2_(v) });
+  }
+  out.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+  return out;
 }
