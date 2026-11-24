@@ -191,3 +191,14 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e3e9ee; w
 .history-area { fill: rgba(47, 111, 237, 0.12); }
 .history-dot { fill: #2f6fed; stroke: #fff; stroke-width: 1.5; }
 .axis-label { font-size: 11px; fill: #5a6a78; }
+
+/* Ticker tape (pinned to the bottom of the screen) */
+.ticker-tape { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; height: 38px; display: flex; align-items: center; overflow: hidden; background: #1c2733; color: #eef3f7; border-top: 1px solid #0d141b; }
+.tape-track { display: flex; width: max-content; animation: tape-scroll 45s linear infinite; }
+.ticker-tape:hover .tape-track { animation-play-state: paused; }
+.tape-strip { display: flex; }
+.tape-item { padding: 0 16px; font-size: 0.9rem; white-space: nowrap; }
+.tape-item .up { color: #7dd87d; }
+.tape-item .down { color: #ff9c9c; }
+@keyframes tape-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.page { padding-bottom: 56px; }
