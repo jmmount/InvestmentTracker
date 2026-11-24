@@ -20,6 +20,15 @@ export function sectorColor(sector) {
 const money0 = (v) =>
   `$${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
 
+// Position a tooltip so it never runs off the chart (and so off the
+// phone screen): flip it to the other side of the cursor near an edge.
+const tipStyle = (tip) => {
+  const fx = tip.w && tip.x > tip.w * 0.55
+  const fy = tip.h && tip.y > tip.h * 0.55
+  const tf = [fx && 'translateX(-100%)', fy && 'translateY(-100%)'].filter(Boolean).join(' ')
+  return { left: fx ? tip.x - 14 : tip.x + 14, top: fy ? tip.y - 14 : tip.y + 14, transform: tf || undefined }
+}
+
 export function DonutChart({ sectors, total }) {
   const entries = Object.entries(sectors).sort((a, b) => b[1] - a[1])
   const r = 70
@@ -35,7 +44,7 @@ export function DonutChart({ sectors, total }) {
   const wrapRef = useRef(null)
   const move = (e) => {
     const rect = wrapRef.current.getBoundingClientRect()
-    setTip((t) => (t ? { ...t, x: e.clientX - rect.left, y: e.clientY - rect.top } : t))
+    setTip((t) => (t ? { ...t, x: e.clientX - rect.left, y: e.clientY - rect.top, w: rect.width, h: rect.height } : t))
   }
   return (
     <div className="donut-wrap chart-hover" ref={wrapRef} onMouseMove={move} onMouseLeave={() => setTip(null)}>
@@ -70,7 +79,7 @@ export function DonutChart({ sectors, total }) {
         )}
       </svg>
       {tip && (
-        <div className="chart-tip" style={{ left: tip.x + 14, top: tip.y + 14 }}>
+        <div className="chart-tip" style={tipStyle(tip)}>
           <strong>{tip.label}</strong> · {money0(tip.value)} · {(tip.frac * 100).toFixed(1)}%
         </div>
       )}
@@ -143,7 +152,7 @@ export function HistoryChart({ history }) {
   const changePct = (change / first.value) * 100
   const move = (e) => {
     const rect = wrapRef.current.getBoundingClientRect()
-    setTip((t) => (t ? { ...t, x: e.clientX - rect.left, y: e.clientY - rect.top } : t))
+    setTip((t) => (t ? { ...t, x: e.clientX - rect.left, y: e.clientY - rect.top, w: rect.width, h: rect.height } : t))
   }
   const tipPoint = tip ? history[tip.i] : null
   const tipDelta = tip && tip.i > 0 ? tipPoint.value - history[tip.i - 1].value : null
@@ -175,7 +184,7 @@ export function HistoryChart({ history }) {
           <text x={W - PADR} y={H - PADB - 4} textAnchor="end" className="axis-label">{money0(lo)}</text>
         </svg>
         {tipPoint && (
-          <div className="chart-tip" style={{ left: tip.x + 14, top: tip.y + 14 }}>
+          <div className="chart-tip" style={tipStyle(tip)}>
             <strong>{fmtDate(tipPoint.date)}</strong> · {money0(tipPoint.value)}
             {tipDelta != null && (
               <> · <span className={tipDelta >= 0 ? 'up' : 'down'}>{tipDelta >= 0 ? '+' : '−'}{money0(Math.abs(tipDelta))}</span></>
