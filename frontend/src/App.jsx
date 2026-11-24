@@ -3,11 +3,13 @@ import Portfolio from './views/Portfolio.jsx'
 import PurchaseTicket from './views/PurchaseTicket.jsx'
 import Consultation from './views/Consultation.jsx'
 import { usePortfolio } from './data-portfolio.js'
+import TickerTape from './components/TickerTape.jsx'
 
 export default function App() {
   const [view, setView] = useState('portfolio')
   const pf = usePortfolio()
   return (
+    <>
     <main className="page wide">
       <header className="heading">
         <h1>Investment Tracker</h1>
@@ -28,5 +30,7 @@ export default function App() {
       {view === 'ticket' && <PurchaseTicket meta={pf.meta} />}
       {view === 'consult' && <Consultation />}
     </main>
+    <TickerTape positions={pf.data.positions} />
+    </>
   )
 }
