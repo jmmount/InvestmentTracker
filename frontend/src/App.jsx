@@ -13,7 +13,7 @@ export default function App() {
     <main className="page wide">
       <header className="heading">
         <h1>Investment Tracker</h1>
-        <p>Holdings and purchase tickets, backed by the Investments spreadsheet.</p>
+        <p>Holdings and purchase tickets, backed by the local investments database.</p>
       </header>
       <nav className="tabs">
         <button type="button" className={view === 'portfolio' ? 'tab active' : 'tab'} onClick={() => setView('portfolio')}>
@@ -26,11 +26,25 @@ export default function App() {
           Consultation
         </button>
       </nav>
-      {view === 'portfolio' && <Portfolio data={pf.data} source={pf.source} loading={pf.loading} />}
+      {view === 'portfolio' && pf.loading && (
+        <p className="muted">Loading the portfolio from the local database…</p>
+      )}
+      {view === 'portfolio' && pf.error && !pf.loading && (
+        <section className="card">
+          <h2>Couldn’t load the portfolio</h2>
+          <p>{pf.error}</p>
+          <p>
+            The backend answers <code>/api/portfolio</code> from the same
+            machine that serves this page. Start it with{' '}
+            <code>python3 backend/server.py</code> and refresh.
+          </p>
+        </section>
+      )}
+      {view === 'portfolio' && pf.data && <Portfolio data={pf.data} loading={pf.loading} />}
       {view === 'ticket' && <PurchaseTicket meta={pf.meta} />}
       {view === 'consult' && <Consultation />}
     </main>
-    <TickerTape positions={pf.data.positions} />
+    {pf.data && <TickerTape positions={pf.data.positions} />}
     </>
   )
 }

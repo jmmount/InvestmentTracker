@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { SHEET_ENDPOINT } from '../config.js'
+import { API_BASE } from '../config.js'
 
 // Consultation view: chat with a Gemini model about the portfolio.
-// The browser talks ONLY to the Apps Script endpoint (same URL as the
-// reads); the script holds the Gemini API key in its Script Properties
-// and calls the model server-side, grounding the conversation in the
-// live portfolio payload. The key never reaches this code.
+// The browser talks ONLY to the local backend (POST /api/consult); the
+// backend holds the Gemini API key in its environment and calls the
+// model server-side, grounding the conversation in the live portfolio
+// payload. The key never reaches this code.
+const CONSULT_URL = `${API_BASE}/api/consult`
 const SUGGESTIONS = [
   'How concentrated is my portfolio by sector?',
   'Which holdings are below their Graham number, and what does that mean?',
@@ -24,20 +25,6 @@ export default function Consultation() {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
   }, [messages, busy])
 
-  if (!SHEET_ENDPOINT) {
-    return (
-      <section className="card">
-        <h2>Consultation</h2>
-        <p>
-          This view chats with a language model about your portfolio through
-          the same Apps Script endpoint as the reads. Set{' '}
-          <code>VITE_SHEET_ENDPOINT</code> in your <code>.env</code> first
-          (see the README), then restart the dev server.
-        </p>
-      </section>
-    )
-  }
-
   async function send(text) {
     const trimmed = (text || '').trim()
     if (!trimmed || busy) return
@@ -47,9 +34,9 @@ export default function Consultation() {
     setNotice('')
     setBusy(true)
     try {
-      // text/plain keeps this a CORS "simple request" — Apps Script web
-      // apps cannot answer a preflight, so no application/json header.
-      const res = await fetch(SHEET_ENDPOINT, {
+      // text/plain keeps this a CORS "simple request" for cross-origin
+      // backends; same-origin it is just a plain POST.
+      const res = await fetch(CONSULT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action: 'consult', messages: history }),
@@ -65,7 +52,7 @@ export default function Consultation() {
         setMessages(messages)
       }
     } catch (err) {
-      setNotice('Could not reach the endpoint. Check the URL in .env and that the web app is deployed.')
+      setNotice('Could not reach the backend. Start it with python3 backend/server.py and refresh.')
       setMessages(messages)
     } finally {
       setBusy(false)

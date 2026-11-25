@@ -45,7 +45,7 @@ function HoldingCard({ p, isBuyCandidate }) {
   )
 }
 
-export default function Portfolio({ data: d, source, loading }) {
+export default function Portfolio({ data: d, loading }) {
   const positions = [...d.positions].sort((a, b) => b.value - a.value)
   return (
     <section>
@@ -83,35 +83,23 @@ export default function Portfolio({ data: d, source, loading }) {
       </div>
 
       <h2 className="section-title">Holdings</h2>
-      {loading && <p className="muted">Fetching live data from the workbook…</p>}
+      {loading && <p className="muted">Fetching live data from the local database…</p>}
       <div className="holdings">
         {positions.map((p) => (
           <HoldingCard key={p.ticker} p={p} isBuyCandidate={d.buy_candidates.includes(p.ticker)} />
         ))}
       </div>
 
-      {source === 'live' ? (
-        <p className="footnote">
-          Live from the Investments workbook — holdings, shares and cost aggregated from the
-          CleanData lots by the Apps Script read endpoint. Cost basis: {d.cost_basis}{' '}
-          Reinvested dividends excluded from cost: {money(d.total_dividend_reinvested)}.
-          {d.market_as_of ? (
-            <> Prices, Graham numbers and day/week moves come from the workbook's MarketData
-            tab (yfinance functions, close of {d.market_as_of}).</>
-          ) : (
-            <> Graham numbers and day/week moves are carried from the {d.seed_as_of} snapshot
-            until the workbook's MarketData tab is populated.</>
-          )}
-        </p>
-      ) : (
-        <p className="footnote">
-          Snapshot as of {d.as_of} — prices are the prior close. Cost basis: {d.cost_basis}
-          {' '}Reinvested dividends excluded from cost: {money(d.total_dividend_reinvested)}.
-          Data source: the Investments workbook — the spreadsheet stays the backend;
-          this baked-in snapshot is showing because the live read endpoint is not
-          configured in .env or did not answer.
-        </p>
-      )}
+      <p className="footnote">
+        Live from the local investments database — holdings, shares and cost aggregated from the
+        lots table by the backend. Cost basis: {d.cost_basis}{' '}
+        Reinvested dividends excluded from cost: {money(d.total_dividend_reinvested)}.
+        {d.market_as_of ? (
+          <> Prices, Graham numbers and day/week moves come from yfinance (close of {d.market_as_of}).</>
+        ) : (
+          <> Prices and Graham numbers update with the next refresh.</>
+        )}
+      </p>
     </section>
   )
 }
