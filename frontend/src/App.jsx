@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Portfolio from './views/Portfolio.jsx'
-import PurchaseTicket from './views/PurchaseTicket.jsx'
+import UploadStatement from './views/UploadStatement.jsx'
 import Consultation from './views/Consultation.jsx'
 import { usePortfolio } from './data-portfolio.js'
 import TickerTape from './components/TickerTape.jsx'
@@ -13,14 +13,14 @@ export default function App() {
     <main className="page wide">
       <header className="heading">
         <h1>Investment Tracker</h1>
-        <p>Holdings and purchase tickets, backed by the local investments database.</p>
+        <p>Holdings, backed by the local investments database.</p>
       </header>
       <nav className="tabs">
         <button type="button" className={view === 'portfolio' ? 'tab active' : 'tab'} onClick={() => setView('portfolio')}>
           Portfolio
         </button>
-        <button type="button" className={view === 'ticket' ? 'tab active' : 'tab'} onClick={() => setView('ticket')}>
-          Purchase Ticket
+        <button type="button" className={view === 'upload' ? 'tab active' : 'tab'} onClick={() => setView('upload')}>
+          Upload statement
         </button>
         <button type="button" className={view === 'consult' ? 'tab active' : 'tab'} onClick={() => setView('consult')}>
           Consultation
@@ -41,7 +41,7 @@ export default function App() {
         </section>
       )}
       {view === 'portfolio' && pf.data && <Portfolio data={pf.data} loading={pf.loading} />}
-      {view === 'ticket' && <PurchaseTicket meta={pf.meta} />}
+      {view === 'upload' && <UploadStatement />}
       {view === 'consult' && <Consultation />}
     </main>
     {pf.data && <TickerTape positions={pf.data.positions} />}

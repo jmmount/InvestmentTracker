@@ -8,11 +8,11 @@ the frontend. Three views:
   movement, shares, value, cost, signed gain/loss, Graham number, and a
   "Below Graham · buy candidate" highlight), plus visualizations: an
   allocation-by-sector donut and a signed gain/loss bar chart per holding.
-- **Purchase Ticket** — mimics the Google Form purchase ticket. Fields, in
-  ticket column order: Timestamp (automatic), Ticker, Date,
-  Number of Shares, Purchase Price, Sector, Purchase Type (Cash / Dividends).
-  Ticker/Sector options mirror the database's current values; a new ticker
-  can be entered via "Other…".
+- **Upload statement** — upload a monthly Fidelity statement PDF.
+  The app shows a preview of exactly what would be written (each lot:
+  ticker, date, shares, price, type, plus any rows that need review
+  and will not be written) and inserts only the lots confirmed on that
+  screen. The PDF itself is never stored.
 - **Consultation** — chat with a Gemini model about the portfolio (see
   below).
 
@@ -25,13 +25,6 @@ table (cost = cash lots only; reinvested dividends add shares/value,
 not cost), prices/Graham/day-week moves from yfinance. There is no
 baked-in seed and no fallback: if the backend does not answer, the
 Portfolio view says so instead of showing stale numbers.
-
-The payload also carries a `meta` block — the Purchase Ticket's dropdown
-values (tickers, sectors, purchase types) **derived by the backend from
-the lots table's distinct values**, never hardcoded. A ticker or sector
-that appears in the lots shows up in the form automatically. The lists in
-`src/config.js` are only the offline fallback for when the backend is not
-reachable.
 
 Prices, Graham numbers and day/week moves come from yfinance via the
 Python functions in `~/workspace/investments/market_data/` — one file per
@@ -96,17 +89,18 @@ Until the key exists, the backend answers
 instead of failing. The model is `gemini-3.8-flash` (`CONSULT_MODEL` in
 `backend/server.py`), with thinking off.
 
-## Getting a submitted ticket into the database
+## Getting new lots into the database
 
-**Copy/download mode (the only mode for now)** — each ticket is listed
-under "Tickets this session" with a **Copy row** button (a tab-separated
-row in ticket column order) or **Download CSV** for the whole session.
-
-Ticket POSTs are deliberately disabled (`TICKET_POST_ENABLED = false` in
-`src/config.js`). The write phase — a ticket action in the backend that
-appends a lot to `investments.db` — is a separate, later step. When it
-lands, the app will POST each ticket as JSON with keys
-`timestamp, ticker, date, shares, price, sector, purchaseType`.
+**Upload statement** — pick the monthly Fidelity statement PDF in the
+app. The backend parses it (`backend/fidelity_pdf.py`) and returns a
+preview: every lot it would insert, each flagged new / already
+imported / already in the database, plus any rows that need review and
+will not be written. Nothing is inserted until the preview screen's
+confirm step, and only the checked lots go in. A backup of
+`investments.db` is taken before the write, and the insert is verified
+row by row. The PDF itself is never stored — it is parsed from a temp
+file that is deleted right after parsing. The same parser runs from
+the command line (`python3 backend/fidelity_pdf.py statement.pdf`).
 
 ## Lots: where they come from
 

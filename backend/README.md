@@ -19,12 +19,18 @@ request, so a refresh shows up on the next page load — no restart.
 
 - `GET /api/portfolio` — the portfolio JSON (same shape the old Apps
   Script `doGet` returned): totals, positions, sectors, buy candidates,
-  history, meta. Cost basis is cash lots only; reinvested-dividend lots
+  history. Cost basis is cash lots only; reinvested-dividend lots
   add shares/value, never cost. Total cost carries the frozen +$0.12
   adjustment on the Nov 2026 seed lots (raw cash sum $4,956.17 vs
   Jason's settled $4,956.29), read from `sync_meta`.
-- `GET /api/portfolio?view=meta` — `{ meta: { tickers, sectors,
-  purchase_types } }` for the ticket dropdowns.
+- `POST /api/upload-statement` — multipart Fidelity statement PDF;
+  returns the preview (lots to insert with per-lot status, rows that
+  need review). Writes nothing; the PDF is parsed from a temp file
+  that is deleted right after parsing. Needs `pdftotext` (poppler)
+  on the machine running the server.
+- `POST /api/upload-statement/confirm` — `{ statement_period, lots }`;
+  backs up `investments.db`, inserts exactly the confirmed lots via
+  `fidelity_pdf.ingest` (idempotent), verifies the write row by row.
 - `POST /api/consult` — `{ action: "consult", messages: [...] }`.
   Gemini chat grounded in the live payload (`gemini-3.8-flash`,
   thinking off). Needs `GEMINI_API_KEY` in the environment; without it
@@ -49,4 +55,8 @@ Parses the statement's dividend-reinvestment rows into lots
 (idempotent — re-running a statement inserts nothing; a backup copy of
 the DB is taken before any write). See the module docstring for the
 layout it expects and what it reports as needing review. The PDF itself
-stays where Jason put it; never copy it into the repo.
+stays where Jason put it; never copy it into the repo. The Upload
+statement tab in the app drives this same parser through
+`POST /api/upload-statement` (preview) and
+`POST /api/upload-statement/confirm` (insert) — the CLI is the same
+flow without the preview screen.
