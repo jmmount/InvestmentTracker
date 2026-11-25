@@ -16,7 +16,6 @@
 //          prev_close, day_change_pct, week_close, week_change_pct,
 //          value, gain, dividend_reinvested, gain_pct, graham,
 //          graham_note, below_graham }],
-//          meta: { tickers, sectors, purchase_types },
 //          history: [{ date, value }] }
 // ---------------------------------------------------------------------------
 import { useEffect, useState } from 'react'
@@ -56,8 +55,5 @@ export function usePortfolio() {
     })
     return () => { alive = false }
   }, [])
-  // meta (the lots-derived dropdown values) rides along in the live
-  // payload; null until the backend answers, where the config fallbacks
-  // apply.
-  return { ...state, meta: state.data ? state.data.meta : null }
+  return state
 }

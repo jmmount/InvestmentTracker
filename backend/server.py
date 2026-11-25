@@ -14,31 +14,41 @@ read from sync_meta; see cost_adjustment().
 
 Endpoints:
   GET  /api/portfolio            -> the doGet payload (same shape)
-  GET  /api/portfolio?view=meta  -> { meta: { tickers, sectors,
-                                   purchase_types } } (mirrors doGet)
+  POST /api/upload-statement     -> multipart Fidelity statement PDF;
+                                   parses it and returns the lots it
+                                   would insert (preview only — writes
+                                   nothing to the DB)
+  POST /api/upload-statement/confirm -> { statement_period, lots }
+                                   inserts exactly the confirmed lots
+                                   (backup of investments.db first)
   POST /api/consult              -> { action: "consult", messages }
                                    (Gemini chat grounded in the live
                                    payload; GEMINI_API_KEY from the
                                    environment, never in the repo)
 
-Ticket writes stay gated off (TICKET_POST_ENABLED=false in the
-frontend); the write phase will POST new lots to this backend, not to
-a sheet.
+The uploaded statement PDF is never stored: it is parsed from a temp
+file that is deleted right after parsing, and the confirm step only
+ever sees the parsed lot list, never the PDF itself.
 
 Run:  python3 backend/server.py [--port 8768]
 """
 import json
 import math
 import os
+import re
+import shutil
 import sqlite3
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from datetime import datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
+
+import fidelity_pdf
 
 HERE = Path(__file__).parent
 DIST = HERE.parent / "frontend" / "dist"
@@ -79,16 +89,10 @@ def aggregate_lots(db):
     """lots -> per-ticker {shares, cost (cash only), dividend, sector},
     in first-appearance order, exactly as Code.gs aggregateLots_."""
     by_ticker = {}
-    sectors = []
-    purchase_types = []
     for row in db.execute(
             "SELECT ticker, shares, purchase_price, sector, purchase_type"
             " FROM lots ORDER BY row_num"):
         ticker, shares, price, sector, ptype = row
-        if ptype and ptype not in purchase_types:
-            purchase_types.append(ptype)
-        if sector and sector not in sectors:
-            sectors.append(sector)
         a = by_ticker.setdefault(
             ticker, {"shares": 0.0, "cost": 0.0, "dividend": 0.0,
                      "sector": sector})
@@ -99,7 +103,7 @@ def aggregate_lots(db):
             a["cost"] += shares * price
         if sector:
             a["sector"] = sector
-    return by_ticker, sectors, purchase_types
+    return by_ticker
 
 
 def cost_adjustment(db):
@@ -120,10 +124,7 @@ def cost_adjustment(db):
 
 def build_payload(db):
     """The doGet payload, computed from the DB (Code.gs buildPayload_)."""
-    by_ticker, sector_list, purchase_types = aggregate_lots(db)
-    meta = {"tickers": sorted(by_ticker),
-            "sectors": sorted(sector_list),
-            "purchase_types": purchase_types}
+    by_ticker = aggregate_lots(db)
     market = {r[0]: r for r in db.execute(
         "SELECT ticker, name, price, prev_close, day_change_pct, week_close,"
         " week_change_pct, graham, graham_note, close_date FROM market_data")}
@@ -191,18 +192,212 @@ def build_payload(db):
         "buy_candidates": [p["ticker"] for p in positions if p["below_graham"]],
         "market_as_of": market_as_of,
         "positions": positions,
-        "meta": meta,
         "history": [{"date": r[0], "value": r[1]} for r in db.execute(
             "SELECT snapshot_date, total_value FROM portfolio_totals"
             " ORDER BY snapshot_date")],
     }
 
 
-def build_meta(db):
-    by_ticker, sector_list, purchase_types = aggregate_lots(db)
-    return {"meta": {"tickers": sorted(by_ticker),
-                     "sectors": sorted(sector_list),
-                     "purchase_types": purchase_types}}
+# ---------------------------------------------------------------------------
+# Statement upload — Fidelity PDF -> lots, preview first, confirm writes.
+# ---------------------------------------------------------------------------
+
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+LOT_DATE_RE = re.compile(r"^\d{1,2}/\d{1,2}/\d{4}$")
+TICKER_RE = re.compile(r"^[A-Z]{1,6}$")
+
+
+def _parse_multipart(body, content_type):
+    """Minimal multipart/form-data parse: return the first file part's
+    (filename, bytes). Stdlib only; the app has exactly one upload
+    field, so no general-purpose parser is warranted."""
+    m = re.search(r"boundary=([^;]+)", content_type or "")
+    if not m:
+        raise ValueError("upload needs a multipart body with a boundary")
+    boundary = m.group(1).strip().strip('"').encode()
+    parts = body.split(b"--" + boundary)
+    for part in parts:
+        if b'filename="' not in part:
+            continue
+        head, _, data = part.partition(b"\r\n\r\n")
+        if not data:
+            continue
+        name_m = re.search(rb'filename="([^"]*)"', head)
+        filename = (name_m.group(1).decode("utf-8", "replace")
+                    if name_m else "statement.pdf")
+        # Strip the trailing CRLF that precedes the next boundary.
+        if data.endswith(b"\r\n"):
+            data = data[:-2]
+        return filename, data
+    raise ValueError("no file part in the upload")
+
+
+def _classify_lots(db, lots):
+    """Read-only: for each parsed lot, is it new, already imported from
+    this statement, or already in the lots table (e.g. from the seed)?
+    Nothing here writes — the preview must never touch the DB."""
+    has_imports = db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table'"
+        " AND name='pdf_imports'").fetchone() is not None
+    sectors = {r[0]: r[1] for r in db.execute(
+        "SELECT ticker, sector FROM tickers")}
+    out = []
+    for lot in lots:
+        key = fidelity_pdf.txn_key(lot)
+        if has_imports and db.execute(
+                "SELECT 1 FROM pdf_imports WHERE txn_key=?",
+                (key,)).fetchone():
+            status = "already_imported"
+        elif db.execute(
+                "SELECT 1 FROM lots WHERE ticker=? AND purchase_date=?"
+                " AND ABS(shares - ?) < 0.0005"
+                " AND ABS(purchase_price - ?) < 0.005"
+                " AND purchase_type=?",
+                (lot["ticker"], lot["purchase_date"], lot["shares"],
+                 lot["purchase_price"], lot["purchase_type"])).fetchone():
+            status = "already_in_db"
+        else:
+            status = "new"
+        out.append({"ticker": lot["ticker"],
+                    "purchase_date": lot["purchase_date"],
+                    "shares": lot["shares"],
+                    "purchase_price": lot["purchase_price"],
+                    "purchase_type": lot["purchase_type"],
+                    "sector": sectors.get(lot["ticker"], ""),
+                    "status": status})
+    return out
+
+
+def handle_upload_statement(body, content_type):
+    """Parse an uploaded statement PDF and return the preview: every
+    lot it would insert, each flagged new / already-imported /
+    already-in-db, plus the rows that need review and will NOT be
+    written. The PDF is parsed from a temp file that is deleted before
+    this returns; nothing is written to the DB."""
+    try:
+        filename, data = _parse_multipart(body, content_type)
+    except ValueError as e:
+        return {"ok": False, "error": "bad_upload", "message": str(e)}
+    if len(data) > MAX_UPLOAD_BYTES:
+        return {"ok": False, "error": "too_large",
+                "message": "That file is over 10 MB — not a statement PDF."}
+    if not data.startswith(b"%PDF"):
+        return {"ok": False, "error": "not_a_pdf",
+                "message": "That file is not a PDF — pick the Fidelity "
+                           "statement PDF."}
+    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    try:
+        tmp.write(data)
+        tmp.close()
+        try:
+            parsed = fidelity_pdf.parse_pdf(tmp.name)
+        except FileNotFoundError:
+            return {"ok": False, "error": "pdftotext_missing",
+                    "message": "pdftotext is not installed on the machine "
+                               "running this server (poppler-utils). The "
+                               "statement cannot be read without it."}
+        except Exception as e:
+            return {"ok": False, "error": "parse_failed",
+                    "message": f"The statement could not be parsed: {e}"[:200]}
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+    if not DB_PATH.exists():
+        return {"ok": False, "error": "no_db",
+                "message": "investments.db not found on this server."}
+    db = sqlite3.connect(DB_PATH)
+    try:
+        lots = _classify_lots(db, parsed["lots"])
+    finally:
+        db.close()
+    return {"ok": True,
+            "statement_period": parsed["statement_period"],
+            "filename": filename,
+            "lots": lots,
+            "to_insert": sum(1 for x in lots if x["status"] == "new"),
+            "skipped": parsed["skipped"],
+            "unhandled": parsed["unhandled"],
+            "activity_sections": parsed["activity_sections"],
+            "needs_review": parsed["needs_review"]}
+
+
+def _valid_lot(raw):
+    """A confirmed lot, validated before it may reach the DB: the
+    confirm step only ever receives what the preview showed, but the
+    server still checks every field rather than trusting the client."""
+    if not isinstance(raw, dict):
+        return None
+    ticker = raw.get("ticker")
+    date = raw.get("purchase_date")
+    shares = raw.get("shares")
+    price = raw.get("purchase_price")
+    ptype = raw.get("purchase_type")
+    if (not isinstance(ticker, str) or not TICKER_RE.match(ticker)
+            or not isinstance(date, str) or not LOT_DATE_RE.match(date)
+            or not isinstance(shares, (int, float)) or not shares > 0
+            or not isinstance(price, (int, float)) or not price >= 0
+            or not isinstance(ptype, str) or not ptype.strip()):
+        return None
+    return {"ticker": ticker, "purchase_date": date,
+            "shares": float(shares), "purchase_price": float(price),
+            "purchase_type": ptype.strip()}
+
+
+def handle_upload_confirm(body):
+    """Insert exactly the confirmed lots. Backup first (DB-care rule),
+    then fidelity_pdf.ingest — which re-checks idempotency, so a lot
+    that landed between preview and confirm is skipped, never doubled.
+    The write is verified row by row before reporting success."""
+    period = body.get("statement_period")
+    raw_lots = body.get("lots")
+    if not isinstance(period, str) or not period:
+        return {"ok": False, "error": "bad_confirm",
+                "message": "Confirm needs the statement period from the preview."}
+    if not isinstance(raw_lots, list) or not raw_lots:
+        return {"ok": False, "error": "bad_confirm",
+                "message": "Nothing selected to insert."}
+    lots = [_valid_lot(x) for x in raw_lots]
+    if any(x is None for x in lots):
+        return {"ok": False, "error": "bad_confirm",
+                "message": "A confirmed lot failed validation — nothing "
+                           "was written."}
+    if not DB_PATH.exists():
+        return {"ok": False, "error": "no_db",
+                "message": "investments.db not found on this server."}
+    backup = (str(DB_PATH) + ".bak-"
+              + datetime.now(ET).strftime("%Y%m%d-%H%M%S"))
+    shutil.copyfile(DB_PATH, backup)
+    try:
+        result = fidelity_pdf.ingest(
+            str(DB_PATH), {"statement_period": period, "lots": lots})
+    except Exception as e:
+        return {"ok": False, "error": "ingest_failed",
+                "message": f"The insert failed: {e}"[:200],
+                "db_backup": backup}
+    inserted = result.get("inserted") or []
+    db = sqlite3.connect(DB_PATH)
+    try:
+        verified = [x for x in inserted if db.execute(
+            "SELECT 1 FROM lots WHERE row_num=?",
+            (x["row_num"],)).fetchone()]
+    finally:
+        db.close()
+    if len(verified) != len(inserted):
+        return {"ok": False, "error": "verify_failed",
+                "message": "The insert reported success but not every lot "
+                           "could be found afterwards — the backup is at "
+                           f"{backup}. Nothing further was written.",
+                "db_backup": backup}
+    return {"ok": True,
+            "statement_period": period,
+            "inserted": len(verified),
+            "inserted_tickers": [x["ticker"] for x in verified],
+            "already_imported": len(result.get("already_imported") or []),
+            "already_in_db": len(result.get("already_in_db") or []),
+            "new_ticker_warnings": result.get("new_ticker_warnings") or [],
+            "db_backup": backup}
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +530,24 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/upload-statement":
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                return self._json(200, {"ok": False, "error": "bad_upload"})
+            if length > MAX_UPLOAD_BYTES + 4096:
+                return self._json(200, {"ok": False, "error": "too_large",
+                                        "message": "That file is over 10 MB."})
+            return self._json(200, handle_upload_statement(
+                self.rfile.read(length),
+                self.headers.get("Content-Type")))
+        if parsed.path == "/api/upload-statement/confirm":
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(length) or b"{}")
+            except Exception:
+                return self._json(200, {"ok": False, "error": "bad_json"})
+            return self._json(200, handle_upload_confirm(body))
         if parsed.path == "/api/consult":
             try:
                 length = int(self.headers.get("Content-Length") or 0)
@@ -356,8 +569,6 @@ class Handler(SimpleHTTPRequestHandler):
                     "error": "investments.db not found — run backend/sync_db.py"})
             db = sqlite3.connect(DB_PATH)
             try:
-                if parse_qs(parsed.query).get("view") == ["meta"]:
-                    return self._json(200, build_meta(db))
                 return self._json(200, build_payload(db))
             finally:
                 db.close()

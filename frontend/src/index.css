@@ -41,21 +41,7 @@ fieldset.field { border: 0; padding: 0; margin: 0 0 14px; }
   background: #fff;
 }
 
-.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-@media (max-width: 420px) { .row2 { grid-template-columns: 1fr; } }
-
 .total { margin: 0 0 14px; color: #33475b; }
-
-.pills { display: flex; gap: 8px; }
-.pill {
-  border: 1px solid #b9c6cf;
-  border-radius: 999px;
-  padding: 8px 16px;
-  cursor: pointer;
-  font-weight: 600;
-}
-.pill input { display: none; }
-.pill.active { background: #14532d; border-color: #14532d; color: #fff; }
 
 .submit {
   width: 100%;
@@ -78,9 +64,7 @@ fieldset.field { border: 0; padding: 0; margin: 0 0 14px; }
   padding: 10px 12px;
 }
 
-.tickets-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.tickets-head h2 { margin: 0; font-size: 1.1rem; }
-.tickets-head button, td button {
+td button {
   padding: 6px 10px;
   border-radius: 6px;
   border: 1px solid #b9c6cf;
