@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { SHEET_ENDPOINT, TICKET_POST_ENABLED, TICKERS as FALLBACK_TICKERS, SECTORS as FALLBACK_SECTORS, PURCHASE_TYPES as FALLBACK_PURCHASE_TYPES } from '../config.js'
+import { TICKET_POST_ENABLED, TICKERS as FALLBACK_TICKERS, SECTORS as FALLBACK_SECTORS, PURCHASE_TYPES as FALLBACK_PURCHASE_TYPES } from '../config.js'
 
-// Workbook column order (RawData / CleanData):
+// Ticket column order (matches the lots table):
 // Timestamp | Ticker | Date | Number of Shares | Purchase Price | Sector | Purchase Type
 
 function todayISO() {
@@ -42,9 +42,9 @@ function csvEscape(v) {
 }
 
 export default function PurchaseTicket({ meta }) {
-  // Dropdown values are derived from the workbook's CleanData tab by the
-  // read endpoint (meta) whenever it answered; the config lists are only
-  // the offline fallback, mirroring the workbook as of 2026-11-13.
+  // Dropdown values are derived from the lots table by the backend
+  // (meta) whenever it answered; the config lists are only the offline
+  // fallback, mirroring the database as of 2026-11-13.
   const TICKERS = meta && meta.tickers && meta.tickers.length ? meta.tickers : FALLBACK_TICKERS
   const SECTORS = meta && meta.sectors && meta.sectors.length ? meta.sectors : FALLBACK_SECTORS
   const PURCHASE_TYPES = meta && meta.purchase_types && meta.purchase_types.length ? meta.purchase_types : FALLBACK_PURCHASE_TYPES
@@ -89,34 +89,14 @@ export default function PurchaseTicket({ meta }) {
       price: String(price).trim(),
       sector,
       purchaseType,
-      status: SHEET_ENDPOINT && TICKET_POST_ENABLED ? 'sending' : 'ready',
+      status: 'ready',
     }
 
-    if (SHEET_ENDPOINT && TICKET_POST_ENABLED) {
-      try {
-        const res = await fetch(SHEET_ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            timestamp: ticket.timestamp,
-            ticker: ticket.ticker,
-            date: ticket.date,
-            shares: ticket.shares,
-            price: ticket.price,
-            sector: ticket.sector,
-            purchaseType: ticket.purchaseType,
-          }),
-        })
-        if (!res.ok) throw new Error(`Endpoint returned ${res.status}`)
-        ticket.status = 'sent'
-        setNotice('Ticket sent to the workbook.')
-      } catch (err) {
-        ticket.status = 'failed'
-        setNotice('Sending failed — the ticket is saved below so you can copy the row instead.')
-      }
-    } else {
-      setNotice('Ticket recorded below. Copy its row into the RawData tab, or download the CSV.')
-    }
+    // Ticket POSTs are deliberately disabled (TICKET_POST_ENABLED=false):
+    // the write phase that posts tickets to the backend is a separate,
+    // later step. Until then every ticket is recorded below for copy or
+    // CSV download.
+    setNotice('Ticket recorded below. Copy its row for your records, or download the CSV.')
 
     setTickets((prev) => [ticket, ...prev])
     setTickerChoice('')
@@ -131,7 +111,7 @@ export default function PurchaseTicket({ meta }) {
   async function copyRow(t) {
     try {
       await navigator.clipboard.writeText(toTSV(t))
-      setNotice(`Row for ${t.ticker} copied — paste it into RawData as a new row.`)
+      setNotice(`Row for ${t.ticker} copied — paste it where you keep ticket rows.`)
     } catch {
       setError('Clipboard was blocked by the browser — use Download CSV instead.')
     }
@@ -155,7 +135,7 @@ export default function PurchaseTicket({ meta }) {
     <main className="page">
       <header className="heading">
         <h1>Purchase Ticket</h1>
-        <p>Log a stock purchase — same fields as the form, written for the Investments workbook.</p>
+        <p>Log a stock purchase — same fields as the form. Tickets are recorded below until the database write phase lands.</p>
       </header>
 
       <form className="card" onSubmit={handleSubmit}>
@@ -284,7 +264,7 @@ export default function PurchaseTicket({ meta }) {
               </tbody>
             </table>
           </div>
-          <p className="hint">Copy row pastes as one tab-separated row in the workbook&apos;s column order: Timestamp, Ticker, Date, Number of Shares, Purchase Price, Sector, Purchase Type.</p>
+          <p className="hint">Copy row pastes as one tab-separated row in ticket column order: Timestamp, Ticker, Date, Number of Shares, Purchase Price, Sector, Purchase Type.</p>
         </section>
       )}
     </main>
