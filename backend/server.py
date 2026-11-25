@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Investment Tracker — local backend (SQLite read path).
 
-Serves the prebuilt frontend (../dist) and the portfolio JSON from the
+Serves the prebuilt frontend (frontend/dist) and the portfolio JSON from the
 local SQLite store (backend/investments.db, refreshed by
 ~/workspace/investments/refresh_db.py — no sheet involved).
 The payload is computed from the lots table with the exact aggregation
@@ -41,11 +41,29 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 HERE = Path(__file__).parent
-DIST = HERE.parent / "dist"
+DIST = HERE.parent / "frontend" / "dist"
 DB_PATH = HERE / "investments.db"
 ET = ZoneInfo("America/New_York")
 COST_BASIS = ("cash purchases only; reinvested dividends excluded "
               "(Jason, 2026-11-12)")
+
+
+def _load_env():
+    """Load backend/.env (gitignored) into the environment if present.
+
+    Lets the machine that runs this server hold GEMINI_API_KEY without
+    exporting it in every shell. A real environment variable wins.
+    """
+    try:
+        lines = (HERE / ".env").read_text().splitlines()
+    except OSError:
+        return
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip().strip("\"'"))
 
 
 def round2(v):
@@ -352,6 +370,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    _load_env()
     port = int(os.environ.get("INVESTMENT_TRACKER_PORT", "8768"))
     host = os.environ.get("INVESTMENT_TRACKER_HOST", "0.0.0.0")
     if "--port" in sys.argv:
