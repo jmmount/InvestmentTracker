@@ -188,3 +188,56 @@ data source. See the PR body for the full verification.
   DB that has no `cash_positions` table yet). The Portfolio view shows
   it as its own line under the total. The holdings total stays
   holdings-only; cash is never folded in.
+
+## Watchlist view (Nov 26, 2026, branch feature/watchlist-view)
+
+- **New view.** `src/views/Watchlist.jsx` + a Watchlist tab in `App.jsx`.
+  Add by ticker symbol, delete by ticker symbol (two-step inline
+  confirm), one card per ticker. The card heading reuses the portfolio
+  `HoldingCard` layout — ticker, sector chip, company name — and each
+  card shows the EDGAR fundamentals (latest value plus the history
+  behind it, expandable per metric) and the Graham number. Revenue
+  growth shows as two figures: the 10-year revenue CAGR (annual) and
+  quarterly YoY for the last four quarters only.
+- **EDGAR, not yfinance, for fundamentals.** New `backend/edgar.py`
+  (stdlib only): ticker → CIK via the SEC tickers file (cached a day,
+  never hardcoded), then the companyfacts endpoint. Tag mapping
+  verified live against Alphabet (end-years 2013–2025) before the
+  build: revenue FY2015 $74.99B → FY2025 $402.84B, 10-yr CAGR 18.3%;
+  last-4-quarters YoY 2025 Q3 +15.9%, 2026 Q1 +21.8%, Q2 +24.2%,
+  Q3 +24.7%; current ratio FY2014 4.69 → FY2025 2.01; FCF FY2013
+  $11.30B → FY2025 $73.27B; ROE FY2017 8.7% → FY2025 35.7%; net
+  margin FY2017 11.4% → FY2025 32.8%; R&D FY2013 12.9% → FY2025
+  15.2%. Revenue falls back to
+  `RevenueFromContractWithCustomerExcludingAssessedTax`; operating
+  cash flow is the `...UsedIn...` variant; restatements resolve to
+  the latest-filed 10-K/10-Q per period. Series are keyed by the year
+  of the `end` date, never by `fy` — `fy` is the filing year, and an
+  earlier fy-keyed draft mislabeled every series by up to two years
+  before this was caught and corrected. Q2/Q3 10-Qs tag both YTD
+  cumulative and single-quarter revenue; the single-quarter entry
+  wins, and a cumulative-only filer is differenced within the year.
+- **Citation.** The view carries a visible "Source: SEC EDGAR" line
+  with the endpoint in full
+  (`data.sec.gov/api/xbrl/companyfacts/CIK##########.json`), and each
+  card links to its company's own facts URL. The Graham number is
+  cited separately — it comes from the tracker's price feed
+  (`market_data`, yfinance), not EDGAR.
+- **Honest limit, stated in the PR.** Short-term debt (`DebtCurrent`)
+  is tagged only sporadically (Alphabet: FY2014–16 only); the debt
+  total uses what is tagged and the card says so. EDGAR has no prices
+  and no dividend history by period.
+- **Storage.** New `watchlist` (ticker PK, cik, added_at) and
+  `watchlist_metrics` (cached computed series) tables, created on
+  first use with a backup first (DB-care rule). Name comes from the
+  `tickers` table first (same name the portfolio card shows), then
+  EDGAR's entityName, then the SEC tickers-file title — EDGAR's
+  entityName can be wrong (BAC's CIK reports "BofA Finance LLC");
+  sector from the `tickers` table when the ticker is already a
+  holding, else filled in by the twice-daily refresh, which upserts
+  the `tickers` row from yfinance in a guarded step after the
+  holdings commit. Graham is read live from `market_data`, never
+  recomputed from EDGAR.
+- **Endpoints.** `GET /api/watchlist`, `POST /api/watchlist`,
+  `POST /api/watchlist/refresh`, `DELETE /api/watchlist?ticker=X`.
+  Reads never hit EDGAR; add/refresh fetch once per ticker.

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Portfolio from './views/Portfolio.jsx'
+import Watchlist from './views/Watchlist.jsx'
 import UploadStatement from './views/UploadStatement.jsx'
 import Consultation from './views/Consultation.jsx'
 import { usePortfolio } from './data-portfolio.js'
@@ -18,6 +19,9 @@ export default function App() {
       <nav className="tabs">
         <button type="button" className={view === 'portfolio' ? 'tab active' : 'tab'} onClick={() => setView('portfolio')}>
           Portfolio
+        </button>
+        <button type="button" className={view === 'watchlist' ? 'tab active' : 'tab'} onClick={() => setView('watchlist')}>
+          Watchlist
         </button>
         <button type="button" className={view === 'upload' ? 'tab active' : 'tab'} onClick={() => setView('upload')}>
           Upload statement
@@ -41,6 +45,7 @@ export default function App() {
         </section>
       )}
       {view === 'portfolio' && pf.data && <Portfolio data={pf.data} loading={pf.loading} />}
+      {view === 'watchlist' && <Watchlist />}
       {view === 'upload' && <UploadStatement />}
       {view === 'consult' && <Consultation />}
     </main>
