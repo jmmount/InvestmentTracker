@@ -2,7 +2,7 @@
 
 A React single-page app for Jason's investments. The **local SQLite
 store (`backend/investments.db`) is the backend data source**; this is
-the frontend. Three views:
+the frontend. Four views:
 
 - **Portfolio** — every holding highlighted on its own card (price, day/week
   movement, shares, value, cost, signed gain/loss, Graham number, and a
@@ -10,6 +10,13 @@ the frontend. Three views:
   allocation-by-sector donut and a signed gain/loss bar chart per holding.
   The core cash position from the latest uploaded statement shows as its
   own line under the total (holdings-only total, cash not folded in).
+- **Watchlist** — tickers added by symbol, one card each with the
+  SEC EDGAR fundamentals (current ratio, debt/equity, free cash flow,
+  10-year revenue CAGR, quarterly revenue growth YoY for the last
+  four quarters, return on equity, R&D as share of revenue, net
+  margin — latest value plus the history behind it), the Graham
+  number, and a visible SEC EDGAR citation with the endpoint. See
+  `backend/edgar.py` for the tag mapping.
 - **Upload statement** — upload a monthly Fidelity statement PDF.
   The app shows a preview of exactly what would be written (each lot:
   ticker, date, shares, price, type, plus any rows that need review

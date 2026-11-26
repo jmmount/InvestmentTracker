@@ -27,6 +27,22 @@ Endpoints:
                                    (Gemini chat grounded in the live
                                    payload; GEMINI_API_KEY from the
                                    environment, never in the repo)
+  GET  /api/watchlist            -> the watchlist: one item per ticker
+                                   with the seven EDGAR fundamentals
+                                   (current ratio, debt/equity, free
+                                   cash flow, quarterly revenue growth,
+                                   return on equity, R&D share, net
+                                   margin) plus the Graham number from
+                                   market_data, and the source citation
+  POST /api/watchlist            -> { ticker } — resolve the ticker to
+                                   its CIK, fetch its EDGAR facts,
+                                   compute the seven metrics and store
+                                   them (idempotent: re-adding returns
+                                   the existing item)
+  POST /api/watchlist/refresh    -> { ticker } — re-fetch EDGAR and
+                                   recompute the stored metrics
+  DELETE /api/watchlist?ticker=X -> remove the ticker and its cached
+                                   metrics
 
 The uploaded statement PDF is never stored: it is parsed from a temp
 file that is deleted right after parsing, and the confirm step only
@@ -51,6 +67,7 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import fidelity_pdf
+import edgar
 
 HERE = Path(__file__).parent
 DIST = HERE.parent / "frontend" / "dist"
@@ -587,6 +604,241 @@ def handle_consult(body):
     return {"ok": True, "reply": text}
 
 
+# ---------------------------------------------------------------------------
+# Watchlist — SEC EDGAR fundamentals, one card per ticker.
+#
+# Storage: watchlist (ticker, cik, added_at) + watchlist_metrics
+# (name, edgar_url, fetched_at, metrics_json, notes_json). The seven
+# fundamentals are computed from EDGAR by backend/edgar.py and cached
+# here; EDGAR is only hit on add and on an explicit refresh, because
+# filing data only changes when a new 10-K or 10-Q lands.
+#
+# Name comes from the tickers table when the ticker is already a
+# holding (the same name the portfolio card shows), else EDGAR's
+# companyfacts entityName, else the SEC tickers file title. The
+# order matters: EDGAR's entityName is wrong for some filers —
+# BAC's CIK reports "BofA Finance LLC" — so the tracker's own
+# registry wins when it has the ticker. Sector comes from
+# the tickers table when the ticker is already a holding; otherwise it
+# is filled in by the twice-daily yfinance refresh (which upserts the
+# tickers row) and reads as null until then. The Graham number is read
+# from market_data — the tracker's own yfinance computation, never
+# recomputed from EDGAR — and is null until the refresh covers the
+# ticker. EDGAR has no prices and no dividend history; the watchlist
+# never claims otherwise.
+# ---------------------------------------------------------------------------
+
+WATCHLIST_CITATION = {
+    "fundamentals": "SEC EDGAR",
+    "fundamentals_endpoint":
+        "data.sec.gov/api/xbrl/companyfacts/CIK##########.json",
+    "graham": "Investment Tracker price feed (yfinance)",
+    "note": ("The seven fundamentals on each card are computed from "
+             "the company's filings via SEC EDGAR (endpoint above; "
+             "each card links to that company's own facts URL). The "
+             "Graham number comes from the tracker's price feed, "
+             "not EDGAR."),
+}
+
+
+def ensure_watchlist_tables(db):
+    """Create the watchlist tables on first use. Backup first: creating
+    tables is a structural change (DB-care rule). The cached metric
+    series are re-fetchable from EDGAR, so one backup covers it."""
+    has = db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table'"
+        " AND name='watchlist'").fetchone() is not None
+    if has:
+        return
+    backup = (str(DB_PATH) + ".bak-watchlist-"
+              + datetime.now(ET).strftime("%Y%m%d-%H%M%S"))
+    shutil.copyfile(DB_PATH, backup)
+    db.execute("CREATE TABLE IF NOT EXISTS watchlist ("
+               "ticker TEXT PRIMARY KEY, cik INTEGER NOT NULL,"
+               " added_at TEXT NOT NULL)")
+    db.execute("CREATE TABLE IF NOT EXISTS watchlist_metrics ("
+               "ticker TEXT PRIMARY KEY, name TEXT NOT NULL,"
+               " edgar_url TEXT NOT NULL, fetched_at TEXT NOT NULL,"
+               " metrics_json TEXT NOT NULL, notes_json TEXT NOT NULL)")
+    db.commit()
+
+
+def _watchlist_name(db, ticker, computed, title):
+    """The card heading's company name, from data, never hardcoded:
+    the tracker's tickers table first (same name the portfolio card
+    shows), then EDGAR's entityName, then the SEC tickers file title."""
+    row = db.execute(
+        "SELECT name FROM tickers WHERE ticker=?",
+        (ticker,)).fetchone()
+    if row and row[0]:
+        return row[0]
+    if computed.get("entity_name"):
+        return computed["entity_name"]
+    if title:
+        return title
+    return ticker
+
+
+def _watchlist_item(db, ticker, cik):
+    """One watchlist card's payload: cached EDGAR metrics plus the
+    sector (tickers table) and Graham number (market_data) resolved
+    live, so a price refresh shows up without re-fetching EDGAR."""
+    m = db.execute(
+        "SELECT name, edgar_url, fetched_at, metrics_json, notes_json"
+        " FROM watchlist_metrics WHERE ticker=?",
+        (ticker,)).fetchone()
+    if not m:
+        return {"ticker": ticker, "cik": cik, "name": ticker,
+                "sector": None, "graham": None, "graham_note": None,
+                "edgar_url": None, "fetched_at": None,
+                "metrics": {}, "notes": ["Metrics not computed yet."]}
+    sector = db.execute(
+        "SELECT sector FROM tickers WHERE ticker=?",
+        (ticker,)).fetchone()
+    graham = db.execute(
+        "SELECT graham, graham_note FROM market_data WHERE ticker=?",
+        (ticker,)).fetchone()
+    return {"ticker": ticker, "cik": cik, "name": m[0],
+            "sector": sector[0] if sector else None,
+            "graham": graham[0] if graham else None,
+            "graham_note": (graham[1] if graham and graham[1] else
+                            "No Graham number yet — the price refresh "
+                            "has not covered this ticker."),
+            "edgar_url": m[1], "fetched_at": m[2],
+            "metrics": json.loads(m[3]), "notes": json.loads(m[4])}
+
+
+def _no_db():
+    return {"ok": False, "error": "no_db",
+            "message": "investments.db not found on this server."}
+
+
+def handle_watchlist_list():
+    if not DB_PATH.exists():
+        return _no_db()
+    db = sqlite3.connect(DB_PATH)
+    try:
+        ensure_watchlist_tables(db)
+        items = [_watchlist_item(db, t, c) for t, c in db.execute(
+            "SELECT ticker, cik FROM watchlist ORDER BY ticker")]
+    finally:
+        db.close()
+    return {"ok": True, "items": items, "citation": WATCHLIST_CITATION}
+
+
+def _valid_watchlist_ticker(body):
+    ticker = (body.get("ticker") or "").strip().upper()
+    if not TICKER_RE.match(ticker or ""):
+        return None
+    return ticker
+
+
+def handle_watchlist_add(body):
+    ticker = _valid_watchlist_ticker(body)
+    if not ticker:
+        return {"ok": False, "error": "bad_ticker",
+                "message": "Give a ticker symbol, e.g. GOOGL."}
+    if not DB_PATH.exists():
+        return _no_db()
+    try:
+        resolved = edgar.resolve_ticker(ticker)
+    except edgar.EdgarError as e:
+        return {"ok": False, "error": e.code, "message": e.message}
+    if resolved is None:
+        return {"ok": False, "error": "unknown_ticker",
+                "message": f"{ticker} is not a ticker the SEC knows."}
+    cik = resolved["cik"]
+    db = sqlite3.connect(DB_PATH)
+    try:
+        ensure_watchlist_tables(db)
+        existing = db.execute(
+            "SELECT cik FROM watchlist WHERE ticker=?",
+            (ticker,)).fetchone()
+        if existing:
+            return {"ok": True, "already": True,
+                    "item": _watchlist_item(db, ticker, existing[0])}
+        try:
+            computed = edgar.compute_metrics(
+                edgar.fetch_companyfacts(cik), cik)
+        except edgar.EdgarError as e:
+            return {"ok": False, "error": e.code, "message": e.message}
+        now = datetime.now(ET).strftime("%Y-%m-%d %H:%M %Z")
+        with db:
+            db.execute("INSERT INTO watchlist VALUES (?,?,?)",
+                       (ticker, cik, now))
+            db.execute("INSERT OR REPLACE INTO watchlist_metrics"
+                       " VALUES (?,?,?,?,?,?)",
+                       (ticker, _watchlist_name(
+                            db, ticker, computed, resolved["title"]),
+                        computed["edgar_url"], now,
+                        json.dumps(computed["metrics"]),
+                        json.dumps(computed["notes"])))
+        return {"ok": True, "item": _watchlist_item(db, ticker, cik)}
+    finally:
+        db.close()
+
+
+def handle_watchlist_refresh(body):
+    ticker = _valid_watchlist_ticker(body)
+    if not ticker:
+        return {"ok": False, "error": "bad_ticker",
+                "message": "Give a ticker symbol, e.g. GOOGL."}
+    if not DB_PATH.exists():
+        return _no_db()
+    db = sqlite3.connect(DB_PATH)
+    try:
+        ensure_watchlist_tables(db)
+        row = db.execute(
+            "SELECT cik FROM watchlist WHERE ticker=?",
+            (ticker,)).fetchone()
+        if not row:
+            return {"ok": False, "error": "not_watched",
+                    "message": f"{ticker} is not on the watchlist."}
+        try:
+            computed = edgar.compute_metrics(
+                edgar.fetch_companyfacts(row[0]), row[0])
+        except edgar.EdgarError as e:
+            return {"ok": False, "error": e.code, "message": e.message}
+        try:
+            title = (edgar.resolve_ticker(ticker) or {}).get("title")
+        except edgar.EdgarError:
+            title = None
+        now = datetime.now(ET).strftime("%Y-%m-%d %H:%M %Z")
+        with db:
+            db.execute("UPDATE watchlist_metrics SET name=?, edgar_url=?,"
+                       " fetched_at=?, metrics_json=?, notes_json=?"
+                       " WHERE ticker=?",
+                       (_watchlist_name(db, ticker, computed, title),
+                        computed["edgar_url"], now,
+                        json.dumps(computed["metrics"]),
+                        json.dumps(computed["notes"]), ticker))
+        return {"ok": True, "item": _watchlist_item(db, ticker, row[0])}
+    finally:
+        db.close()
+
+
+def handle_watchlist_delete(ticker):
+    if not ticker or not TICKER_RE.match(ticker):
+        return {"ok": False, "error": "bad_ticker",
+                "message": "Give a ticker symbol, e.g. GOOGL."}
+    if not DB_PATH.exists():
+        return _no_db()
+    db = sqlite3.connect(DB_PATH)
+    try:
+        ensure_watchlist_tables(db)
+        with db:
+            db.execute("DELETE FROM watchlist_metrics WHERE ticker=?",
+                       (ticker,))
+            cur = db.execute("DELETE FROM watchlist WHERE ticker=?",
+                             (ticker,))
+        if cur.rowcount == 0:
+            return {"ok": False, "error": "not_watched",
+                    "message": f"{ticker} is not on the watchlist."}
+        return {"ok": True, "deleted": ticker}
+    finally:
+        db.close()
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=str(DIST), **kw)
@@ -632,10 +884,35 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(200, {"ok": False,
                                         "error": "unknown_action"})
             return self._json(200, handle_consult(body))
+        if parsed.path == "/api/watchlist":
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(length) or b"{}")
+            except Exception:
+                return self._json(200, {"ok": False, "error": "bad_json"})
+            return self._json(200, handle_watchlist_add(body))
+        if parsed.path == "/api/watchlist/refresh":
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(length) or b"{}")
+            except Exception:
+                return self._json(200, {"ok": False, "error": "bad_json"})
+            return self._json(200, handle_watchlist_refresh(body))
+        return self._json(404, {"ok": False, "error": "unknown_path"})
+
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/watchlist":
+            from urllib.parse import parse_qs
+            ticker = (parse_qs(parsed.query).get("ticker") or [""])[0]
+            return self._json(200, handle_watchlist_delete(
+                ticker.strip().upper()))
         return self._json(404, {"ok": False, "error": "unknown_path"})
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/watchlist":
+            return self._json(200, handle_watchlist_list())
         if parsed.path == "/api/portfolio":
             if not DB_PATH.exists():
                 return self._json(500, {
