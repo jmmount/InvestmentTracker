@@ -3,6 +3,13 @@ import { DonutChart, GainBars, HistoryChart, sectorColor } from '../components/c
 const money = (v, digits = 2) =>
   `$${v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
 const signedPct = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}%`
+const monthName = (period) => {
+  if (!period) return ''
+  const [y, m] = period.split('-')
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const i = parseInt(m, 10) - 1
+  return months[i] ? `${months[i]} ${y}` : period
+}
 
 function HoldingCard({ p, isBuyCandidate }) {
   return (
@@ -65,6 +72,13 @@ export default function Portfolio({ data: d, loading }) {
           <span className="stat-value">{money(d.total_cost)}</span>
         </div>
       </div>
+
+      {d.cash && (
+        <p className="cash-line">
+          Cash: <strong>{money(d.cash.balance)}</strong>{' '}
+          <span className="muted">— {monthName(d.cash.statement_period)} statement</span>
+        </p>
+      )}
 
       <div className="charts">
         <div className="card">

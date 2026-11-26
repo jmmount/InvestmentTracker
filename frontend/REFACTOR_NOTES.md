@@ -157,3 +157,34 @@ data source. See the PR body for the full verification.
   PurchaseTicket.jsx` still exists on main (push-files cannot delete
   files). It is unreferenced — nothing imports it. Delete it in the
   GitHub web UI after merging this PR.
+
+## Cash position and cash buys (Nov 25, 2026, branch feature/cash-position-and-buys)
+
+- **Derived aliases, no hardcoded map.** `backend/fidelity_pdf.py`
+  no longer carries the name-fragment → ticker table. Tickers resolve
+  from the statement's Holdings section first ("NAME (SYM)"), then
+  from the DB's `tickers` names (seeded from the sheet): a statement
+  name matches when its words match the company name's words in order,
+  each a prefix of a name word, in either direction. Ambiguous or
+  unmatched names land in needs_review, never guessed. The only
+  hardcoded name rule left is the core classification
+  ("FIDELITY GOVERNMENT MONEY" / SPAXX is never a lot).
+- **Cash buys.** A "Securities Bought & Sold" section now parses into
+  Cash lots (same row shape as the dividend rows). Sales are reported
+  for review, never auto-ingested. CAVEAT: no statement seen so far
+  contains this section, so the parser is defensive and UNVERIFIED
+  against a real buy — anything unparseable lands in needs_review, and
+  the first statement with a buy is the real test.
+- **Cash position.** Each statement's core (SPAXX) ending balance is
+  read from the Holdings "Total Core Account" row, cross-checked
+  against the core position row, and stored per period in the new
+  `cash_positions` table (statement_period PK; re-uploads replace the
+  row). No backfill — recording starts with the next upload. The
+  preview shows the balance that would be recorded; confirm writes it
+  (backup-first, verified like the lots). A confirm with zero lots is
+  allowed when it carries a cash position.
+- **Home page.** `GET /api/portfolio` gains a `cash` block
+  (`{ balance, statement_period, as_of }` or `null` — null-safe on a
+  DB that has no `cash_positions` table yet). The Portfolio view shows
+  it as its own line under the total. The holdings total stays
+  holdings-only; cash is never folded in.

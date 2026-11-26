@@ -19,18 +19,25 @@ request, so a refresh shows up on the next page load — no restart.
 
 - `GET /api/portfolio` — the portfolio JSON (same shape the old Apps
   Script `doGet` returned): totals, positions, sectors, buy candidates,
-  history. Cost basis is cash lots only; reinvested-dividend lots
+  history, plus a `cash` block (`{ balance, statement_period, as_of }`
+  from the latest recorded statement, or `null`) — the holdings total
+  stays holdings-only; cash is a separate line, never folded in. Cost
+  basis is cash lots only; reinvested-dividend lots
   add shares/value, never cost. Total cost carries the frozen +$0.12
   adjustment on the Nov 2026 seed lots (raw cash sum $4,956.17 vs
   Jason's settled $4,956.29), read from `sync_meta`.
 - `POST /api/upload-statement` — multipart Fidelity statement PDF;
-  returns the preview (lots to insert with per-lot status, rows that
+  returns the preview (lots to insert with per-lot status, the core
+  cash balance that would be recorded, rows that
   need review). Writes nothing; the PDF is parsed from a temp file
   that is deleted right after parsing. Needs `pdftotext` (poppler)
   on the machine running the server.
-- `POST /api/upload-statement/confirm` — `{ statement_period, lots }`;
+- `POST /api/upload-statement/confirm` — `{ statement_period, lots, cash }`;
   backs up `investments.db`, inserts exactly the confirmed lots via
-  `fidelity_pdf.ingest` (idempotent), verifies the write row by row.
+  `fidelity_pdf.ingest` (idempotent) and records the cash balance in
+  `cash_positions` (one row per statement period, re-uploads replace
+  it), verifies the write row by row. A confirm with zero lots is
+  allowed when it carries a cash position.
 - `POST /api/consult` — `{ action: "consult", messages: [...] }`.
   Gemini chat grounded in the live payload (`gemini-3.8-flash`,
   thinking off). Needs `GEMINI_API_KEY` in the environment; without it
@@ -53,8 +60,17 @@ python3 backend/fidelity_pdf.py statement.pdf [--db PATH] [--dry-run]
 
 Parses the statement's dividend-reinvestment rows into lots
 (idempotent — re-running a statement inserts nothing; a backup copy of
-the DB is taken before any write). See the module docstring for the
-layout it expects and what it reports as needing review. The PDF itself
+the DB is taken before any write). Cash buys from a "Securities Bought
+& Sold" section become Cash lots (sales are reported for review, never
+auto-ingested); that parser is written defensively and is unverified
+against a real buy, since no statement seen so far contains the
+section. Ticker names resolve from the statement's Holdings section
+first, then from the DB's `tickers` names — no hardcoded alias map
+remains except the core-fund classification (SPAXX is never a lot).
+The statement's core cash balance is recorded per period in
+`cash_positions` (no backfill — recording starts with the next upload).
+See the module docstring for the layout it expects and what it reports
+as needing review. The PDF itself
 stays where Jason put it; never copy it into the repo. The Upload
 statement tab in the app drives this same parser through
 `POST /api/upload-statement` (preview) and

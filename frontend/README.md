@@ -8,11 +8,15 @@ the frontend. Three views:
   movement, shares, value, cost, signed gain/loss, Graham number, and a
   "Below Graham · buy candidate" highlight), plus visualizations: an
   allocation-by-sector donut and a signed gain/loss bar chart per holding.
+  The core cash position from the latest uploaded statement shows as its
+  own line under the total (holdings-only total, cash not folded in).
 - **Upload statement** — upload a monthly Fidelity statement PDF.
   The app shows a preview of exactly what would be written (each lot:
   ticker, date, shares, price, type, plus any rows that need review
   and will not be written) and inserts only the lots confirmed on that
-  screen. The PDF itself is never stored.
+  screen. Cash buys from a "Securities Bought & Sold" section are
+  inserted as Cash lots; the statement's core cash balance is recorded
+  too. The PDF itself is never stored.
 - **Consultation** — chat with a Gemini model about the portfolio (see
   below).
 
