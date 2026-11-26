@@ -9,7 +9,12 @@ the frontend. Four views:
   "Below Graham · buy candidate" highlight), plus visualizations: an
   allocation-by-sector donut and a signed gain/loss bar chart per holding.
   The core cash position from the latest uploaded statement shows as its
-  own line under the total (holdings-only total, cash not folded in).
+  own line under the total (holdings-only total, cash not folded in). A
+  gain/loss-by-period bar chart (Quarterly/Annual toggle) shows the gain
+  or loss earned within each quarter and each year since Mar 2024, as a
+  % of the cost at the period start with the dollar gain in the tooltip —
+  new money added during a period is excluded, so each bar is that
+  period's own gain, not the cumulative margin.
 - **Watchlist** — tickers added by symbol, one card each with the
   SEC EDGAR fundamentals (current ratio, debt/equity, free cash flow,
   10-year revenue CAGR, quarterly revenue growth YoY for the last

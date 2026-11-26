@@ -1,4 +1,4 @@
-import { DonutChart, GainBars, HistoryChart, sectorColor } from '../components/charts.jsx'
+import { DonutChart, GainBars, HistoryChart, MarginBars, sectorColor } from '../components/charts.jsx'
 
 const money = (v, digits = 2) =>
   `$${v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
@@ -94,6 +94,11 @@ export default function Portfolio({ data: d, loading }) {
       <div className="card history-card">
         <h2>Total value history</h2>
         <HistoryChart history={d.history} />
+      </div>
+
+      <div className="card history-card">
+        <h2>Gain / loss by period</h2>
+        <MarginBars history={d.history} />
       </div>
 
       <h2 className="section-title">Holdings</h2>
