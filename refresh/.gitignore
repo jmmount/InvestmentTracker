@@ -1,0 +1,7 @@
+# Outputs of a refresh run — never versioned.
+latest.json
+snapshots/
+charts/
+backups/
+__pycache__/
+*.pyc
