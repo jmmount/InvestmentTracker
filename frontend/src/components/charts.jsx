@@ -292,3 +292,155 @@ export function MiniLine({ points, formatValue }) {
     </div>
   )
 }
+
+// Bar chart of the gain or loss earned WITHIN each period — one bar per
+// quarter or per year, computed from the daily portfolio_totals history
+// (each point: {date, value, cost}). For each period:
+//   gain = (value_end - value_start) - (cost_end - cost_start)
+//   pct  = gain / cost_start * 100
+// A period starts at the previous period's end snapshot; the first
+// period starts at the first snapshot (2024-03-05). Bars are labelled
+// with the % of start cost; the tooltip adds the dollar gain/loss.
+// The tooltip flips near the frame edge (tipStyle) so it stays on the
+// phone screen; tapping a bar shows it too.
+const marginPeriods = (history, granularity) => {
+  const keyOf = (d) => {
+    const [y, m] = d.split('-').map(Number)
+    return granularity === 'annual' ? `${y}` : `${y}-Q${Math.floor((m - 1) / 3) + 1}`
+  }
+  const labelOf = (d) => {
+    const [y, m] = d.split('-').map(Number)
+    if (granularity === 'annual') return `${y}`
+    return `Q${Math.floor((m - 1) / 3) + 1} '${String(y).slice(2)}`
+  }
+  const longOf = (d) => {
+    const [y, m] = d.split('-').map(Number)
+    if (granularity === 'annual') return `${y}`
+    return `Q${Math.floor((m - 1) / 3) + 1} ${y}`
+  }
+  const periodEnd = (d) => {
+    const [y, m] = d.split('-').map(Number)
+    if (granularity === 'annual') return `${y}-12-31`
+    const qm = Math.floor((m - 1) / 3) * 3 + 3
+    const last = new Date(y, qm, 0).getDate()
+    return `${y}-${String(qm).padStart(2, '0')}-${String(last).padStart(2, '0')}`
+  }
+  const groups = []
+  for (const h of history) {
+    const k = keyOf(h.date)
+    if (!groups.length || groups[groups.length - 1].key !== k) groups.push({ key: k, points: [] })
+    groups[groups.length - 1].points.push(h)
+  }
+  let prevEnd = history[0]
+  return groups.map((g) => {
+    const end = g.points[g.points.length - 1]
+    const start = prevEnd
+    prevEnd = end
+    const gain = (end.value - start.value) - (end.cost - start.cost)
+    return {
+      key: g.key,
+      label: labelOf(end.date),
+      longLabel: longOf(end.date),
+      endDate: end.date,
+      partial: end.date < periodEnd(end.date),
+      gain,
+      pct: start.cost ? (gain / start.cost) * 100 : 0,
+    }
+  })
+}
+
+const signedMoney0 = (v) =>
+  `${v >= 0 ? '+' : '−'}$${Math.abs(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+const signedPct1 = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}%`
+
+export function MarginBars({ history }) {
+  const [granularity, setGranularity] = useState('quarterly')
+  const [tip, setTip] = useState(null)
+  const wrapRef = useRef(null)
+  if (!history || history.length < 2) {
+    return <p className="muted">Not enough history yet — the bars build as daily totals accumulate.</p>
+  }
+  const points = marginPeriods(history, granularity)
+  const W = 640, H = 200, PADL = 8, PADR = 8, PADT = 28, PADB = 24
+  const values = points.map((p) => p.pct)
+  const hi = Math.max(0, ...values), lo = Math.min(0, ...values)
+  const span = hi - lo || 1
+  const y = (v) => PADT + (1 - (v - lo) / span) * (H - PADT - PADB)
+  const zeroY = y(0)
+  const slot = (W - PADL - PADR) / points.length
+  const bw = Math.min(64, slot * 0.55)
+  const fmtDate = (d) =>
+    new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const fmtDateY = (d) =>
+    new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const place = (e) => {
+    const rect = wrapRef.current.getBoundingClientRect()
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top, w: rect.width, h: rect.height }
+  }
+  const move = (e) => {
+    if (tip) setTip((t) => ({ ...t, ...place(e) }))
+  }
+  const show = (e, i) => setTip({ i, ...place(e) })
+  const tipPoint = tip ? points[tip.i] : null
+  const last = points[points.length - 1]
+  // The first snapshot can sit above or below cost (day one closed
+  // below it); that gap predates the first bar, so the bars alone do
+  // not sum to the total gain. Say so under the chart, from the data.
+  const dayOneGap = history[0].value - history[0].cost
+  return (
+    <div>
+      <div className="tabs" role="group" aria-label="Margin period">
+        <button
+          type="button"
+          className={granularity === 'quarterly' ? 'tab active' : 'tab'}
+          onClick={() => { setGranularity('quarterly'); setTip(null) }}
+        >Quarterly</button>
+        <button
+          type="button"
+          className={granularity === 'annual' ? 'tab active' : 'tab'}
+          onClick={() => { setGranularity('annual'); setTip(null) }}
+        >Annual</button>
+      </div>
+      <div className="chart-hover" ref={wrapRef} onMouseMove={move} onMouseLeave={() => setTip(null)}>
+        <svg viewBox={`0 0 ${W} ${H}`} className="history-chart" role="img" aria-label="Gain or loss within each period">
+          <line x1={PADL} y1={zeroY} x2={W - PADR} y2={zeroY} stroke="#b9c6bb" strokeWidth="1" />
+          {points.map((p, i) => {
+            const cx = PADL + slot * (i + 0.5)
+            const top = Math.min(y(p.pct), zeroY)
+            const h = Math.abs(zeroY - y(p.pct))
+            const labelY = p.pct >= 0 ? top - 6 : top + h + 14
+            return (
+              <g key={p.key}>
+                <rect x={cx - bw / 2} y={top} width={bw} height={Math.max(h, 1.5)}
+                  className={p.pct >= 0 ? 'mini-bar-pos' : 'mini-bar-neg'}
+                  onMouseEnter={(e) => show(e, i)}
+                  onClick={(e) => show(e, i)} />
+                <text x={cx} y={labelY} textAnchor="middle" className="mini-bar-value">
+                  {signedPct1(p.pct)}
+                </text>
+                <text x={cx} y={H - 6} textAnchor="middle" className="axis-label">{p.label}</text>
+              </g>
+            )
+          })}
+        </svg>
+        {tipPoint && (
+          <div className="chart-tip" style={tipStyle(tip)}>
+            <strong>{tipPoint.longLabel}{tipPoint.partial ? ` (through ${fmtDate(tipPoint.endDate)})` : ''}</strong>
+            {' · '}{signedMoney0(tipPoint.gain)}
+            {' · '}<span className={tipPoint.pct >= 0 ? 'up' : 'down'}>{signedPct1(tipPoint.pct)}</span>
+          </div>
+        )}
+      </div>
+      <p className="muted">
+        Gain or loss earned within each {granularity === 'quarterly' ? 'quarter' : 'year'}, as a % of the cost at the
+        period start (new money added during the period is excluded).
+        {last.partial && (
+          <> The current {granularity === 'quarterly' ? 'quarter' : 'year'} is in progress — through {fmtDate(last.endDate)}.</>
+        )}
+        {dayOneGap !== 0 && (
+          <> The first day ({fmtDateY(history[0].date)}) closed {money0(Math.abs(dayOneGap))} {dayOneGap < 0 ? 'below' : 'above'} cost, before the first bar.</>
+        )}
+      </p>
+    </div>
+  )
+}

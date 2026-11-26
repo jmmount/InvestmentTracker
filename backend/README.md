@@ -21,8 +21,11 @@ request, so a refresh shows up on the next page load — no restart.
   Script `doGet` returned): totals, positions, sectors, buy candidates,
   history, plus a `cash` block (`{ balance, statement_period, as_of }`
   from the latest recorded statement, or `null`) — the holdings total
-  stays holdings-only; cash is a separate line, never folded in. Cost
-  basis is cash lots only; reinvested-dividend lots
+  stays holdings-only; cash is a separate line, never folded in. History
+  points are `{ date, value, cost }` — `cost` is the total cost (cash
+  lots only, with the +$0.12 adjustment) at that snapshot, so the
+  frontend can compute the gain or loss earned within each quarter/year.
+  Cost basis is cash lots only; reinvested-dividend lots
   add shares/value, never cost. Total cost carries the frozen +$0.12
   adjustment on the Nov 2026 seed lots (raw cash sum $4,956.17 vs
   Jason's settled $4,956.29), read from `sync_meta`.

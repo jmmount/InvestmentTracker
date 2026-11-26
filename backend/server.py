@@ -214,8 +214,8 @@ def build_payload(db):
         "market_as_of": market_as_of,
         "cash": latest_cash(db),
         "positions": positions,
-        "history": [{"date": r[0], "value": r[1]} for r in db.execute(
-            "SELECT snapshot_date, total_value FROM portfolio_totals"
+        "history": [{"date": r[0], "value": r[1], "cost": round2(r[2])} for r in db.execute(
+            "SELECT snapshot_date, total_value, total_cost FROM portfolio_totals"
             " ORDER BY snapshot_date")],
     }
 
