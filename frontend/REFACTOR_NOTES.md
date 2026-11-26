@@ -284,3 +284,24 @@ data source. See the PR body for the full verification.
   narratives name Yahoo Finance tabs as places to find the metrics,
   but the card data comes from SEC EDGAR — the dropdown says so
   plainly and the page citation is unchanged.
+
+## Watchlist icon actions + gain/loss label clearance (Nov 26, 2026, branch feature/watchlist-icon-actions-chart-labels)
+
+- **Gain/loss chart labels.** In `src/components/charts.jsx` the
+  "Gain / loss by period" bars (`MarginBars`) and the watchlist
+  quarterly bars (`MiniBars`) share one layout bug: a negative bar's
+  % label sits below the bar, and with PADB 24 it ran onto the
+  quarter labels (the lowest % label and the Q label shared the same
+  line, centred on the same x). PADB is now 44 in both — a full line
+  between the lowest % label and the axis labels. Toggle and
+  tooltips unchanged.
+- **Watchlist card actions are icons now.** The big Refresh / Delete
+  buttons at the bottom of each card are gone. Top-right of the card
+  head, after the sector chip: a ↻ icon button (refresh, re-fetches
+  EDGAR for that ticker) and a × icon button (delete). Both are real
+  `<button>`s with `aria-label`s, 40px targets for touch. The delete
+  still asks first — tapping × swaps the icons for small Delete /
+  Cancel buttons in the same spot. Delete still removes the ticker
+  from both `watchlist` and `watchlist_metrics`; nothing else on the
+  card changed (heading, Graham, metrics, price header, charts,
+  reference dropdown).
