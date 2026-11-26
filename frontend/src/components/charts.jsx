@@ -203,7 +203,10 @@ export function MiniBars({ points, formatValue }) {
   if (!points || points.length === 0) {
     return <p className="muted">No values yet.</p>
   }
-  const W = 640, H = 200, PADL = 8, PADR = 8, PADT = 28, PADB = 24
+  // PADB is 44, not 24: a negative bar's % label sits below the bar, and
+  // with 24 it ran onto the axis labels. 44 leaves a full line between
+  // the lowest % label and the period labels.
+  const W = 640, H = 200, PADL = 8, PADR = 8, PADT = 28, PADB = 44
   const values = points.map((p) => p.value)
   const hi = Math.max(0, ...values), lo = Math.min(0, ...values)
   const span = hi - lo || 1
@@ -361,7 +364,10 @@ export function MarginBars({ history }) {
     return <p className="muted">Not enough history yet — the bars build as daily totals accumulate.</p>
   }
   const points = marginPeriods(history, granularity)
-  const W = 640, H = 200, PADL = 8, PADR = 8, PADT = 28, PADB = 24
+  // PADB is 44, not 24: a negative bar's % label sits below the bar, and
+  // with 24 it ran onto the quarter labels. 44 leaves a full line
+  // between the lowest % label and the Q labels.
+  const W = 640, H = 200, PADL = 8, PADR = 8, PADT = 28, PADB = 44
   const values = points.map((p) => p.pct)
   const hi = Math.max(0, ...values), lo = Math.min(0, ...values)
   const span = hi - lo || 1

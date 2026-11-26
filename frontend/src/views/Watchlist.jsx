@@ -132,11 +132,34 @@ function WatchlistCard({ item, onDelete, onRefresh, busy }) {
     <article className="holding watchlist-card">
       <div className="holding-head">
         <span className="holding-ticker">{item.ticker}</span>
-        {item.sector && (
-          <span className="chip-sector" style={{ borderColor: sectorColor(item.sector), color: sectorColor(item.sector) }}>
-            {item.sector}
+        <span className="holding-head-right">
+          {item.sector && (
+            <span className="chip-sector" style={{ borderColor: sectorColor(item.sector), color: sectorColor(item.sector) }}>
+              {item.sector}
+            </span>
+          )}
+          <span className="watchlist-icon-actions">
+            {confirmDelete ? (
+              <>
+                <button type="button" className="icon-confirm danger" onClick={onDelete} disabled={busy}>
+                  Delete
+                </button>
+                <button type="button" className="icon-confirm" onClick={() => setConfirmDelete(false)} disabled={busy}>
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="icon-btn" onClick={onRefresh} disabled={busy} aria-label={`Refresh ${item.ticker}`} title="Refresh from EDGAR">
+                  ↻
+                </button>
+                <button type="button" className="icon-btn" onClick={() => setConfirmDelete(true)} aria-label={`Delete ${item.ticker}`} title="Delete from watchlist">
+                  ×
+                </button>
+              </>
+            )}
           </span>
-        )}
+        </span>
       </div>
       <p className="holding-name">{item.name}</p>
       <p className="holding-foot watchlist-price">
@@ -174,25 +197,6 @@ function WatchlistCard({ item, onDelete, onRefresh, busy }) {
         )}
         {item.fetched_at && <span className="muted">Fetched {item.fetched_at}</span>}
       </p>
-      <div className="watchlist-actions">
-        <button type="button" onClick={onRefresh} disabled={busy}>
-          Refresh
-        </button>
-        {confirmDelete ? (
-          <>
-            <button type="button" className="danger" onClick={onDelete} disabled={busy}>
-              Confirm delete
-            </button>
-            <button type="button" onClick={() => setConfirmDelete(false)} disabled={busy}>
-              Cancel
-            </button>
-          </>
-        ) : (
-          <button type="button" onClick={() => setConfirmDelete(true)}>
-            Delete
-          </button>
-        )}
-      </div>
     </article>
   )
 }
