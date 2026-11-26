@@ -15,7 +15,15 @@ the frontend. Four views:
   10-year revenue CAGR, quarterly revenue growth YoY for the last
   four quarters, return on equity, R&D as share of revenue, net
   margin — latest value plus the history behind it), the Graham
-  number, and a visible SEC EDGAR citation with the endpoint. See
+  number, and the current price with day, 6-month and 1-year changes
+  in the card header. Clicking the 10-year revenue CAGR opens a line
+  chart of annual revenue over ten years (per-point tooltips: year
+  and value); clicking quarterly revenue growth opens a bar chart of
+  the last four quarters' YoY growth. A reference dropdown at the top
+  of the page explains the five headline metrics (name, formula,
+  narrative, in Jason's wording). Data-quality notes from EDGAR are
+  stored in the database but no longer shown on the card. The page
+  carries a visible SEC EDGAR citation with the endpoint. See
   `backend/edgar.py` for the tag mapping.
 - **Upload statement** — upload a monthly Fidelity statement PDF.
   The app shows a preview of exactly what would be written (each lot:

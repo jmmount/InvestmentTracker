@@ -195,3 +195,100 @@ export function HistoryChart({ history }) {
     </div>
   )
 }
+
+// Small bar chart: one vertical bar per point, zero line in the
+// middle, value labelled on each bar. Used for the watchlist's
+// quarterly YoY growth (four quarters). points: [{period, value}].
+export function MiniBars({ points, formatValue }) {
+  if (!points || points.length === 0) {
+    return <p className="muted">No values yet.</p>
+  }
+  const W = 640, H = 200, PADL = 8, PADR = 8, PADT = 28, PADB = 24
+  const values = points.map((p) => p.value)
+  const hi = Math.max(0, ...values), lo = Math.min(0, ...values)
+  const span = hi - lo || 1
+  const y = (v) => PADT + (1 - (v - lo) / span) * (H - PADT - PADB)
+  const zeroY = y(0)
+  const slot = (W - PADL - PADR) / points.length
+  const bw = Math.min(64, slot * 0.55)
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="history-chart" role="img" aria-label="Quarterly values">
+      <line x1={PADL} y1={zeroY} x2={W - PADR} y2={zeroY} stroke="#b9c6bb" strokeWidth="1" />
+      {points.map((p, i) => {
+        const cx = PADL + slot * (i + 0.5)
+        const top = Math.min(y(p.value), zeroY)
+        const h = Math.abs(zeroY - y(p.value))
+        const labelY = p.value >= 0 ? top - 6 : top + h + 14
+        return (
+          <g key={p.period}>
+            <rect x={cx - bw / 2} y={top} width={bw} height={Math.max(h, 1.5)}
+              className={p.value >= 0 ? 'mini-bar-pos' : 'mini-bar-neg'} />
+            <text x={cx} y={labelY} textAnchor="middle" className="mini-bar-value">
+              {formatValue(p.value)}
+            </text>
+            <text x={cx} y={H - 6} textAnchor="middle" className="axis-label">{p.period}</text>
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
+// Small line chart with a tooltip on each point: period and value,
+// nothing more. Used for the watchlist's 10-year annual revenue
+// (the series behind the revenue CAGR). points: [{period, value}].
+// The tooltip flips near the frame edge (tipStyle) so it stays on
+// the phone screen; tapping a point shows it too.
+export function MiniLine({ points, formatValue }) {
+  const [tip, setTip] = useState(null)
+  const wrapRef = useRef(null)
+  if (!points || points.length < 2) {
+    return <p className="muted">Not enough history yet.</p>
+  }
+  const W = 640, H = 200, PADL = 8, PADR = 8, PADT = 16, PADB = 22
+  const values = points.map((p) => p.value)
+  const lo = Math.min(...values), hi = Math.max(...values)
+  const pad = Math.max((hi - lo) * 0.15, 1)
+  const min = lo - pad, max = hi + pad
+  const x = (i) => PADL + (i / (points.length - 1)) * (W - PADL - PADR)
+  const y = (v) => PADT + (1 - (v - min) / (max - min)) * (H - PADT - PADB)
+  const pts = points.map((p, i) => [x(i), y(p.value)])
+  const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')
+  const area = `${line} L${x(points.length - 1).toFixed(1)},${H - PADB} L${x(0).toFixed(1)},${H - PADB} Z`
+  const place = (e) => {
+    const rect = wrapRef.current.getBoundingClientRect()
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top, w: rect.width, h: rect.height }
+  }
+  const move = (e) => {
+    if (tip) setTip((t) => ({ ...t, ...place(e) }))
+  }
+  const show = (e, i) => setTip({ i, ...place(e) })
+  const tipPoint = tip ? points[tip.i] : null
+  return (
+    <div className="chart-hover" ref={wrapRef} onMouseMove={move} onMouseLeave={() => setTip(null)}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="history-chart" role="img" aria-label="Annual values over time">
+        <path d={area} className="history-area" />
+        <path d={line} className="history-line" />
+        {pts.map((p, i) => (
+          <g key={points[i].period}>
+            {tip && tip.i === i && <circle cx={p[0]} cy={p[1]} r="4.5" className="history-dot" />}
+            <circle
+              cx={p[0]} cy={p[1]} r="12" fill="transparent"
+              onMouseEnter={(e) => show(e, i)}
+              onClick={(e) => show(e, i)}
+            />
+          </g>
+        ))}
+        <text x={PADL} y={H - 6} className="axis-label">{points[0].period}</text>
+        <text x={W - PADR} y={H - 6} textAnchor="end" className="axis-label">{points[points.length - 1].period}</text>
+        <text x={W - PADR} y={PADT - 4} textAnchor="end" className="axis-label">{formatValue(hi)}</text>
+        <text x={W - PADR} y={H - PADB - 4} textAnchor="end" className="axis-label">{formatValue(lo)}</text>
+      </svg>
+      {tipPoint && (
+        <div className="chart-tip" style={tipStyle(tip)}>
+          <strong>{tipPoint.period}</strong> · {formatValue(tipPoint.value)}
+        </div>
+      )}
+    </div>
+  )
+}

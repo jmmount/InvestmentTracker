@@ -44,10 +44,13 @@ request, so a refresh shows up on the next page load — no restart.
   the action answers `{ ok: false, error: "not_configured" }`.
 - `GET /api/watchlist` — the watchlist: one item per ticker (name from
   the `tickers` table first, then EDGAR, sector from the `tickers`
-  table, Graham number from `market_data`, the EDGAR fundamentals
-  with their histories, data-quality notes, per-card EDGAR facts URL)
-  plus the source citation block. No EDGAR calls on read — the metrics
-  are cached in `watchlist_metrics`.
+  table, Graham number from `market_data`, current price with day,
+  6-month and 1-year changes — day change from `market_data`, the
+  6M/1Y changes from `price_history`, unavailable when the history
+  does not reach back that far — the EDGAR fundamentals with their
+  histories, data-quality notes stored but no longer rendered, per-card
+  EDGAR facts URL) plus the source citation block. No EDGAR calls on
+  read — the metrics are cached in `watchlist_metrics`.
 - `POST /api/watchlist` — `{ ticker }`; resolves the ticker to its CIK
   via the SEC tickers file, fetches its EDGAR companyfacts, computes
   the metrics (`backend/edgar.py`) and stores them. Idempotent:
@@ -88,9 +91,12 @@ single-quarter entry wins, and a cumulative-only filer is differenced
 within the year (Q2 = H1 − Q1, Q3 = 9M − H1) before YoY is computed.
 Known limit: short-term debt (`DebtCurrent`) is tagged only
 sporadically (Alphabet: FY2014–16 only), so the debt total uses what
-is tagged and the card says so. EDGAR has no prices and no dividend
-history by period — the Graham number on each card comes from the
-tracker's own price feed (`market_data`, yfinance), cited separately.
+is tagged and the note is stored with the metrics (no longer shown on
+the card). EDGAR has no prices and no dividend history by period —
+the Graham number and the card header's price with day, 6-month and
+1-year changes come from the tracker's own price feed (`market_data`
+for price and day change, `price_history` for the 6M/1Y changes),
+cited separately.
 Sector for a ticker that is not already a holding is filled in by the
 twice-daily refresh (see below), which upserts the `tickers` row from
 yfinance; until then the card shows no sector chip. Name resolution:
@@ -105,10 +111,18 @@ LLC", not Bank of America).
 Graham / names from yfinance, and writes `market_data`,
 `portfolio_totals` and `portfolio_snapshots` for the prices' trading
 date, plus `latest.json` and the briefing charts. It never touches the
-lots. It also refreshes market data for watchlist tickers (price,
-Graham, name/sector into `market_data` / `tickers`) in a guarded
-step after the holdings commit, so a watchlist fetch failure can
-never fail the holdings refresh. The sheet-era scripts (`snapshot.py`,
+lots. It also writes one `price_history` row per holding per run (the
+watchlist card's 6M/1Y changes read from there) and backfills each
+holding with daily closes once (the sheet-era weekly rows match no
+daily close and would skew the changes) — the backfill prunes the
+weekly rows inside the 2y window, since they are dated Sundays and
+would shadow the Friday close in the server's lookup; weekly rows
+before Nov 2024 are left alone — and refreshes market
+data for watchlist tickers (price, Graham, name/sector into
+`market_data` / `tickers`, latest close into `price_history`, plus a
+one-time 2y backfill for a watched ticker with no history) in a
+guarded step after the holdings commit, so a watchlist fetch failure
+can never fail the holdings refresh. The sheet-era scripts (`snapshot.py`,
 `populate_market_data.py`, `update_app_data.py`) are retired — do not run them.
 
 ## New lots: Fidelity statement PDF
