@@ -241,3 +241,46 @@ data source. See the PR body for the full verification.
 - **Endpoints.** `GET /api/watchlist`, `POST /api/watchlist`,
   `POST /api/watchlist/refresh`, `DELETE /api/watchlist?ticker=X`.
   Reads never hit EDGAR; add/refresh fetch once per ticker.
+
+## Watchlist card follow-up (Nov 26, 2026, branch feature/watchlist-card-prices-charts)
+
+- **Notes off the card.** The bulleted data-quality notes at the
+  bottom of each card are gone from the render only — `notes_json`
+  is still stored in `watchlist_metrics`, and the `.watchlist-notes`
+  CSS rule went with the list.
+- **Price header.** Each card now shows the current price with day,
+  6-month and 1-year changes at the top, next to the Graham number.
+  Price and day change come from `market_data`; the 6M/1Y changes
+  come from `price_history` (latest close on or before the close
+  date minus 6/12 calendar months, computed in
+  `backend/server.py:_price_change`). A missing history reads as
+  unavailable, never a guessed number. The refresh keeps
+  `price_history` current — one row per holding per run, plus a
+  one-time 2y backfill of daily closes for every holding and for
+  watched non-holdings (2y, not 1y, so the 1-year reference date has
+  a close on or before it — a 1y window starts a day too late). The
+  backfill also matters for holdings: the sheet-era weekly rows match
+  no daily close and would skew the 6M/1Y changes by ~1%, and they
+  are dated Sundays, so they would shadow the Friday daily close in
+  the lookup — the backfill prunes the weekly rows inside the 2y
+  window and leaves the pre-Nov-2024 weekly rows alone.
+  (`~/workspace/investments/refresh_db.py`, VM-side, not in the
+  repo — same arrangement as the PR #9 watchlist companion).
+- **Clickable charts.** Clicking the 10-year revenue CAGR opens a
+  line chart of the annual revenue series behind it
+  (`MiniLine` in `src/components/charts.jsx`); clicking quarterly
+  revenue growth YoY opens a bar chart of the last four quarters
+  (`MiniBars`). Both render from the series already stored in
+  `metrics_json` — no edgar.py change. The line chart has a tooltip
+  on each point showing the year and the revenue value only, flipping
+  near the frame edge (the tracker's `tipStyle`) and shown on tap as
+  well as hover, per the phone tooltip rule. Other metrics still
+  expand to a history table.
+- **Metric reference dropdown.** A pull-down at the top of the
+  Watchlist page holds five reference cards — current ratio,
+  debt-to-equity, free cash flow, quarterly revenue growth YoY, ROE —
+  each with name, formula and narrative in Jason's wording verbatim,
+  plus the "Corporate Finance Explained" video link. Care point: the
+  narratives name Yahoo Finance tabs as places to find the metrics,
+  but the card data comes from SEC EDGAR — the dropdown says so
+  plainly and the page citation is unchanged.

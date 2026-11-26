@@ -32,8 +32,10 @@ Endpoints:
                                    (current ratio, debt/equity, free
                                    cash flow, quarterly revenue growth,
                                    return on equity, R&D share, net
-                                   margin) plus the Graham number from
-                                   market_data, and the source citation
+                                   margin) plus the Graham number and
+                                   the current price with day, 6-month
+                                   and 1-year changes from market_data /
+                                   price_history, and the source citation
   POST /api/watchlist            -> { ticker } — resolve the ticker to
                                    its CIK, fetch its EDGAR facts,
                                    compute the seven metrics and store
@@ -624,8 +626,12 @@ def handle_consult(body):
 # tickers row) and reads as null until then. The Graham number is read
 # from market_data — the tracker's own yfinance computation, never
 # recomputed from EDGAR — and is null until the refresh covers the
-# ticker. EDGAR has no prices and no dividend history; the watchlist
-# never claims otherwise.
+# ticker. The card header's price, day change, 6-month and 1-year
+# changes come from the same feed: price and day change from
+# market_data, the 6M/1Y changes from price_history (the refresh
+# keeps a year of closes there; a missing history reads as
+# unavailable, never a guessed number). EDGAR has no prices and no
+# dividend history; the watchlist never claims otherwise.
 # ---------------------------------------------------------------------------
 
 WATCHLIST_CITATION = {
@@ -679,6 +685,38 @@ def _watchlist_name(db, ticker, computed, title):
     return ticker
 
 
+def _months_before(date_str, months):
+    """'YYYY-MM-DD' minus calendar months (day clamped to the month)."""
+    y, m, d = (int(x) for x in date_str.split("-"))
+    m -= months
+    while m <= 0:
+        m += 12
+        y -= 1
+    leap = y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)
+    days = [31, 29 if leap else 28, 31, 30, 31, 30,
+            31, 31, 30, 31, 30, 31][m - 1]
+    return f"{y:04d}-{m:02d}-{min(d, days):02d}"
+
+
+def _price_change(db, ticker, price, close_date, months):
+    """(pct, ref_date) for price vs the latest close on or before
+    close_date minus `months`, from price_history. (None, None) when
+    the history does not reach back that far — never a guessed
+    number."""
+    if price is None or not close_date:
+        return None, None
+    try:
+        row = db.execute(
+            "SELECT date, close FROM price_history WHERE ticker=?"
+            " AND date<=? ORDER BY date DESC LIMIT 1",
+            (ticker, _months_before(close_date, months))).fetchone()
+    except sqlite3.Error:
+        return None, None
+    if not row or not row[1]:
+        return None, None
+    return round2((price / row[1] - 1) * 100), row[0]
+
+
 def _watchlist_item(db, ticker, cik):
     """One watchlist card's payload: cached EDGAR metrics plus the
     sector (tickers table) and Graham number (market_data) resolved
@@ -690,20 +728,33 @@ def _watchlist_item(db, ticker, cik):
     if not m:
         return {"ticker": ticker, "cik": cik, "name": ticker,
                 "sector": None, "graham": None, "graham_note": None,
+                "price": None, "price_date": None,
+                "day_change_pct": None, "change_6m_pct": None,
+                "change_6m_ref": None, "change_1y_pct": None,
+                "change_1y_ref": None,
                 "edgar_url": None, "fetched_at": None,
                 "metrics": {}, "notes": ["Metrics not computed yet."]}
     sector = db.execute(
         "SELECT sector FROM tickers WHERE ticker=?",
         (ticker,)).fetchone()
-    graham = db.execute(
-        "SELECT graham, graham_note FROM market_data WHERE ticker=?",
+    market = db.execute(
+        "SELECT price, prev_close, day_change_pct, close_date, graham,"
+        " graham_note FROM market_data WHERE ticker=?",
         (ticker,)).fetchone()
+    price = market[0] if market else None
+    close_date = market[3] if market else None
+    change_6m, ref_6m = _price_change(db, ticker, price, close_date, 6)
+    change_1y, ref_1y = _price_change(db, ticker, price, close_date, 12)
     return {"ticker": ticker, "cik": cik, "name": m[0],
             "sector": sector[0] if sector else None,
-            "graham": graham[0] if graham else None,
-            "graham_note": (graham[1] if graham and graham[1] else
+            "graham": market[4] if market else None,
+            "graham_note": (market[5] if market and market[5] else
                             "No Graham number yet — the price refresh "
                             "has not covered this ticker."),
+            "price": price, "price_date": close_date,
+            "day_change_pct": market[2] if market else None,
+            "change_6m_pct": change_6m, "change_6m_ref": ref_6m,
+            "change_1y_pct": change_1y, "change_1y_ref": ref_1y,
             "edgar_url": m[1], "fetched_at": m[2],
             "metrics": json.loads(m[3]), "notes": json.loads(m[4])}
 

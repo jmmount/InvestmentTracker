@@ -206,6 +206,15 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e3e9ee; w
 .metric-history { width: 100%; border-collapse: collapse; margin: 0 0 8px; font-size: 0.85rem; }
 .metric-history td { padding: 2px 0; }
 .metric-history td:last-child { text-align: right; font-weight: 700; }
-.watchlist-notes { margin: 8px 0; padding-left: 18px; color: #5a6a78; font-size: 0.85rem; }
 .watchlist-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .watchlist-actions button.danger { border-color: #b3261e; color: #b3261e; background: #fff; }
+.mini-bar-pos { fill: #178a4c; }
+.mini-bar-neg { fill: #c0392b; }
+.mini-bar-value { font-size: 12px; font-weight: 700; fill: #1c2733; }
+.watchlist-reference { margin-bottom: 12px; }
+.watchlist-reference summary { cursor: pointer; font-weight: 700; padding: 4px 0; }
+.reference-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin: 10px 0; }
+.reference-card { background: #fff; border: 1px solid #dde3e8; border-radius: 12px; padding: 12px 14px; }
+.reference-card h3 { margin: 0 0 6px; font-size: 1rem; }
+.reference-formula { margin: 0 0 8px; font-size: 0.85rem; }
+.reference-card p:last-child { margin: 0; font-size: 0.9rem; line-height: 1.45; }
