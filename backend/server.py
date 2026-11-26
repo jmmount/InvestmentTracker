@@ -16,10 +16,12 @@ Endpoints:
   GET  /api/portfolio            -> the doGet payload (same shape)
   POST /api/upload-statement     -> multipart Fidelity statement PDF;
                                    parses it and returns the lots it
-                                   would insert (preview only — writes
-                                   nothing to the DB)
-  POST /api/upload-statement/confirm -> { statement_period, lots }
+                                   would insert plus the core cash
+                                   balance it would record (preview
+                                   only — writes nothing to the DB)
+  POST /api/upload-statement/confirm -> { statement_period, lots, cash }
                                    inserts exactly the confirmed lots
+                                   and records the cash balance
                                    (backup of investments.db first)
   POST /api/consult              -> { action: "consult", messages }
                                    (Gemini chat grounded in the live
@@ -191,11 +193,30 @@ def build_payload(db):
         "sectors": sectors,
         "buy_candidates": [p["ticker"] for p in positions if p["below_graham"]],
         "market_as_of": market_as_of,
+        "cash": latest_cash(db),
         "positions": positions,
         "history": [{"date": r[0], "value": r[1]} for r in db.execute(
             "SELECT snapshot_date, total_value FROM portfolio_totals"
             " ORDER BY snapshot_date")],
     }
+
+
+def latest_cash(db):
+    """Newest recorded core cash position, or None. Defensive: the
+    cash_positions table only exists after the first statement confirm
+    that records one, so a missing table is a normal None, not an
+    error. Cash is reported as its own line; total_value stays
+    holdings-only and never includes it."""
+    try:
+        row = db.execute(
+            "SELECT statement_period, balance, as_of FROM cash_positions"
+            " ORDER BY statement_period DESC LIMIT 1").fetchone()
+    except sqlite3.Error:
+        return None
+    if not row:
+        return None
+    return {"balance": round2(row[1]), "statement_period": row[0],
+            "as_of": row[2]}
 
 
 # ---------------------------------------------------------------------------
@@ -285,12 +306,21 @@ def handle_upload_statement(body, content_type):
         return {"ok": False, "error": "not_a_pdf",
                 "message": "That file is not a PDF — pick the Fidelity "
                            "statement PDF."}
+    ticker_names = None
+    if DB_PATH.exists():
+        try:
+            _db = sqlite3.connect(DB_PATH)
+            ticker_names = {r[0]: r[1] for r in _db.execute(
+                "SELECT ticker, name FROM tickers")}
+            _db.close()
+        except sqlite3.Error:
+            ticker_names = None
     tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
     try:
         tmp.write(data)
         tmp.close()
         try:
-            parsed = fidelity_pdf.parse_pdf(tmp.name)
+            parsed = fidelity_pdf.parse_pdf(tmp.name, ticker_names)
         except FileNotFoundError:
             return {"ok": False, "error": "pdftotext_missing",
                     "message": "pdftotext is not installed on the machine "
@@ -320,6 +350,8 @@ def handle_upload_statement(body, content_type):
             "skipped": parsed["skipped"],
             "unhandled": parsed["unhandled"],
             "activity_sections": parsed["activity_sections"],
+            "cash": parsed["cash"],
+            "cash_note": parsed.get("cash_note"),
             "needs_review": parsed["needs_review"]}
 
 
@@ -345,17 +377,50 @@ def _valid_lot(raw):
             "purchase_type": ptype.strip()}
 
 
+CASH_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _valid_cash(raw):
+    """A confirmed cash position, validated before it may reach the
+    DB: {balance, as_of} echoed back from the preview, or None when
+    the statement had no readable cash balance."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        return False
+    balance = raw.get("balance")
+    as_of = raw.get("as_of")
+    if (not isinstance(balance, (int, float)) or not balance >= 0
+            or not isinstance(as_of, str)
+            or not CASH_DATE_RE.match(as_of)):
+        return False
+    return {"balance": float(balance), "as_of": as_of}
+
+
 def handle_upload_confirm(body):
-    """Insert exactly the confirmed lots. Backup first (DB-care rule),
-    then fidelity_pdf.ingest — which re-checks idempotency, so a lot
-    that landed between preview and confirm is skipped, never doubled.
-    The write is verified row by row before reporting success."""
+    """Insert exactly the confirmed lots and record the confirmed cash
+    position. Backup first (DB-care rule), then fidelity_pdf.ingest —
+    which re-checks idempotency, so a lot that landed between preview
+    and confirm is skipped, never doubled. The write is verified row
+    by row before reporting success. A confirm with zero lots is
+    allowed when it carries a cash position (e.g. re-uploading a
+    statement whose lots are already in the DB)."""
     period = body.get("statement_period")
     raw_lots = body.get("lots")
     if not isinstance(period, str) or not period:
         return {"ok": False, "error": "bad_confirm",
                 "message": "Confirm needs the statement period from the preview."}
-    if not isinstance(raw_lots, list) or not raw_lots:
+    if raw_lots is None:
+        raw_lots = []
+    if not isinstance(raw_lots, list):
+        return {"ok": False, "error": "bad_confirm",
+                "message": "Nothing selected to insert."}
+    cash = _valid_cash(body.get("cash"))
+    if cash is False:
+        return {"ok": False, "error": "bad_confirm",
+                "message": "The cash position failed validation — nothing "
+                           "was written."}
+    if not raw_lots and cash is None:
         return {"ok": False, "error": "bad_confirm",
                 "message": "Nothing selected to insert."}
     lots = [_valid_lot(x) for x in raw_lots]
@@ -371,7 +436,8 @@ def handle_upload_confirm(body):
     shutil.copyfile(DB_PATH, backup)
     try:
         result = fidelity_pdf.ingest(
-            str(DB_PATH), {"statement_period": period, "lots": lots})
+            str(DB_PATH), {"statement_period": period, "lots": lots,
+                          "cash": cash})
     except Exception as e:
         return {"ok": False, "error": "ingest_failed",
                 "message": f"The insert failed: {e}"[:200],
@@ -382,12 +448,19 @@ def handle_upload_confirm(body):
         verified = [x for x in inserted if db.execute(
             "SELECT 1 FROM lots WHERE row_num=?",
             (x["row_num"],)).fetchone()]
+        cash_ok = True
+        if cash is not None:
+            cash_ok = db.execute(
+                "SELECT 1 FROM cash_positions WHERE statement_period=?"
+                " AND ABS(balance - ?) < 0.01",
+                (period, cash["balance"])).fetchone() is not None
     finally:
         db.close()
-    if len(verified) != len(inserted):
+    if len(verified) != len(inserted) or not cash_ok:
         return {"ok": False, "error": "verify_failed",
                 "message": "The insert reported success but not every lot "
-                           "could be found afterwards — the backup is at "
+                           "or the cash position could be found afterwards "
+                           "— the backup is at "
                            f"{backup}. Nothing further was written.",
                 "db_backup": backup}
     return {"ok": True,
@@ -397,6 +470,7 @@ def handle_upload_confirm(body):
             "already_imported": len(result.get("already_imported") or []),
             "already_in_db": len(result.get("already_in_db") or []),
             "new_ticker_warnings": result.get("new_ticker_warnings") or [],
+            "cash_recorded": result.get("cash_recorded"),
             "db_backup": backup}
 
 

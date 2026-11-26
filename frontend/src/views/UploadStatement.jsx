@@ -59,7 +59,8 @@ export default function UploadStatement() {
   async function confirm() {
     if (!preview || phase === 'confirming') return
     const lots = (preview.lots || []).filter((lot, i) => checked[i])
-    if (lots.length === 0) {
+    const cash = preview.cash && preview.cash.balance != null ? preview.cash : null
+    if (lots.length === 0 && !cash) {
       setError('Nothing selected to insert — check at least one new lot.')
       return
     }
@@ -69,7 +70,7 @@ export default function UploadStatement() {
       const res = await fetch(CONFIRM_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ statement_period: preview.statement_period, lots }),
+        body: JSON.stringify({ statement_period: preview.statement_period, lots, cash }),
       })
       const data = await res.json()
       if (!data.ok) {
@@ -125,6 +126,15 @@ export default function UploadStatement() {
             insert, {(preview.lots || []).filter((l) => l.status !== 'new').length} already in the database.
             Check exactly what will be written, then confirm.
           </p>
+          {preview.cash && preview.cash.balance != null ? (
+            <p className="notice">
+              Cash position in this statement: ${preview.cash.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (as of {preview.cash.as_of}) — it will be recorded when you confirm.
+            </p>
+          ) : (
+            <p className="notice">
+              No cash balance could be read from this statement{preview.cash_note ? ` (${preview.cash_note})` : ''} — the lots above are unaffected.
+            </p>
+          )}
           <div className="table-wrap">
             <table>
               <thead>
@@ -175,16 +185,10 @@ export default function UploadStatement() {
               </div>
             </>
           )}
-          {preview.activity_sections && preview.activity_sections.includes('Securities Bought & Sold') && (
-            <p className="notice">
-              This statement has a “Securities Bought &amp; Sold” section (cash buys/sales).
-              Those rows are not inserted automatically — they need review first.
-            </p>
-          )}
           {error && <p className="error">{error}</p>}
           <p>
-            <button type="button" className="submit" disabled={selected === 0 || phase === 'confirming'} onClick={confirm}>
-              {phase === 'confirming' ? 'Inserting…' : `Insert ${selected} lot${selected === 1 ? '' : 's'}`}
+            <button type="button" className="submit" disabled={(selected === 0 && !(preview.cash && preview.cash.balance != null)) || phase === 'confirming'} onClick={confirm}>
+              {phase === 'confirming' ? 'Inserting…' : selected > 0 ? `Insert ${selected} lot${selected === 1 ? '' : 's'}` : 'Record cash position'}
             </button>
             {' '}
             <button type="button" onClick={reset}>Start over</button>
@@ -201,6 +205,11 @@ export default function UploadStatement() {
             {result.already_imported > 0 ? `, ${result.already_imported} already imported` : ''}.
             A backup of the database was taken before the write.
           </p>
+          {result.cash_recorded && (
+            <p className="notice">
+              Cash position recorded: ${result.cash_recorded.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} for {result.cash_recorded.statement_period}.
+            </p>
+          )}
           {result.new_ticker_warnings && result.new_ticker_warnings.length > 0 && (
             <p className="error">
               New ticker{result.new_ticker_warnings.length === 1 ? '' : 's'} with no sector yet: {result.new_ticker_warnings.join(', ')}.
