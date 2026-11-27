@@ -243,6 +243,21 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e3e9ee; w
 .watchlist-detail .holding-foot:last-child { margin-bottom: 0; }
 .mini-bar-pos { fill: #178a4c; }
 .mini-bar-neg { fill: #c0392b; }
+/* Price history is a tap-to-unfold row under the price: the four
+   period changes stacked one per line, plus a 1-year price line.
+   The row follows the metric-row unfold pattern (label + chevron). */
+.price-history-toggle {
+  display: flex; width: 100%; justify-content: space-between; align-items: baseline;
+  padding: 7px 0; background: none; border: 0; border-top: 1px solid #e3e8e3;
+  font-size: 0.92rem; font-weight: 700; text-align: left; cursor: pointer;
+}
+.price-history-detail { padding-bottom: 8px; }
+.price-history-changes { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 8px; }
+/* Dividends: annual per-share totals as a bar chart, with the
+   trailing-12-month yield beside the heading. */
+.dividends-section { border-top: 1px solid #e3e8e3; padding-top: 8px; margin-bottom: 10px; }
+.dividends-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 8px; margin: 0 0 4px; font-size: 0.92rem; font-weight: 700; }
+.dividends-section .muted { margin: 4px 0; font-size: 0.85rem; }
 .mini-bar-value { font-size: 12px; font-weight: 700; fill: #1c2733; }
 .watchlist-reference { margin-bottom: 12px; }
 .watchlist-reference summary { cursor: pointer; font-weight: 700; padding: 4px 0; }
