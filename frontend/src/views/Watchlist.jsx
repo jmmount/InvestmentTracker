@@ -3,8 +3,8 @@ import { API_BASE } from '../config.js'
 import { MiniBars, MiniLine } from '../components/charts.jsx'
 
 // Watchlist view: tickers Jason adds by symbol, one accordion card
-// each — collapsed it shows ticker, company name, sector and price;
-// tap the header to expand the day / 6-month / 1-year changes, the
+// each — collapsed it shows ticker, company name and sector; tap the
+// header to expand the price, the day / 6-month / 1-year changes, the
 // Graham number, and the EDGAR fundamentals (latest value plus the
 // history behind it). Revenue growth shows as two figures:
 // the 10-year revenue CAGR (whose history is the annual revenue
@@ -132,54 +132,48 @@ function WatchlistCard({ item, onDelete, onRefresh, busy }) {
   const [open, setOpen] = useState(false)
   return (
     <article className="holding watchlist-card">
-      <div className="watchlist-card-head">
-        <button
-          type="button"
-          className="watchlist-toggle"
-          onClick={() => setOpen(!open)}
-          aria-expanded={open}
-        >
-          <span className="watchlist-toggle-main">
-            <span className="holding-ticker">{item.ticker}</span>
-            <span className="holding-name">{item.name}</span>
-            {item.sector && <span className="watchlist-sector">{item.sector}</span>}
-          </span>
-          <span className="watchlist-toggle-price">
-            {item.price != null ? (
-              <strong>${item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-            ) : (
-              <span className="muted">—</span>
-            )}
-            <span className="watchlist-chevron" aria-hidden="true">{open ? '▾' : '▸'}</span>
-          </span>
-        </button>
-        <span className="watchlist-icon-actions">
-          {confirmDelete ? (
-            <>
-              <button type="button" className="icon-confirm danger" onClick={onDelete} disabled={busy}>
-                Delete
-              </button>
-              <button type="button" className="icon-confirm" onClick={() => setConfirmDelete(false)} disabled={busy}>
-                Cancel
-              </button>
-            </>
-          ) : (
-            <>
-              <button type="button" className="icon-btn" onClick={onRefresh} disabled={busy} aria-label={`Refresh ${item.ticker}`} title="Refresh from EDGAR">
-                ↻
-              </button>
-              <button type="button" className="icon-btn" onClick={() => setConfirmDelete(true)} aria-label={`Delete ${item.ticker}`} title="Delete from watchlist">
-                ×
-              </button>
-            </>
-          )}
+      <button
+        type="button"
+        className="watchlist-toggle"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
+        <span className="watchlist-toggle-main">
+          <span className="holding-ticker">{item.ticker}</span>
+          <span className="holding-name">{item.name}</span>
+          {item.sector && <span className="watchlist-sector">{item.sector}</span>}
         </span>
-      </div>
+        <span className="watchlist-chevron" aria-hidden="true">{open ? '▾' : '▸'}</span>
+      </button>
       {open && (
         <div className="watchlist-detail">
+          <div className="watchlist-detail-actions">
+            <span className="watchlist-icon-actions">
+              {confirmDelete ? (
+                <>
+                  <button type="button" className="icon-confirm danger" onClick={onDelete} disabled={busy}>
+                    Delete
+                  </button>
+                  <button type="button" className="icon-confirm" onClick={() => setConfirmDelete(false)} disabled={busy}>
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" className="icon-btn" onClick={onRefresh} disabled={busy} aria-label={`Refresh ${item.ticker}`} title="Refresh from EDGAR">
+                    ↻
+                  </button>
+                  <button type="button" className="icon-btn" onClick={() => setConfirmDelete(true)} aria-label={`Delete ${item.ticker}`} title="Delete from watchlist">
+                    ×
+                  </button>
+                </>
+              )}
+            </span>
+          </div>
           <p className="holding-foot watchlist-price">
             {item.price != null ? (
               <>
+                <strong>${item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                 <PriceChange label="1D" value={item.day_change_pct} />
                 <PriceChange label="6M" value={item.change_6m_pct} />
                 <PriceChange label="1Y" value={item.change_1y_pct} />
