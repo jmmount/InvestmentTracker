@@ -4,9 +4,12 @@ import { MiniBars, MiniLine } from '../components/charts.jsx'
 
 // Watchlist view: tickers Jason adds by symbol, one accordion card
 // each — collapsed it shows ticker, company name and sector; tap the
-// header to expand the price, the day / 6-month / 1-year changes, the
-// Graham number, and the EDGAR fundamentals (latest value plus the
-// history behind it). Revenue growth shows as two figures:
+// header to expand the price, the Graham number, a Price history
+// section (day / 3-month / 6-month / 1-year changes plus a 1-year
+// price line from the tracker's price feed), a Dividends section
+// (15-year annual totals and trailing yield from Yahoo Finance),
+// and the EDGAR fundamentals (latest value plus the history behind
+// it). Revenue growth shows as two figures:
 // the 10-year revenue CAGR (whose history is the annual revenue
 // series, shown as a line chart on click) and quarterly YoY for the
 // last four quarters (shown as a bar chart on click); the other
@@ -127,6 +130,67 @@ function PriceChange({ label, value }) {
   )
 }
 
+// Tap-to-unfold row under the price: the four period changes, each
+// on its own line, plus a 1-year line of daily closes. Follows the
+// card's own unfold pattern (label + chevron, content below).
+function PriceHistorySection({ item }) {
+  const [open, setOpen] = useState(false)
+  const points = (item.price_history || []).map((p) => ({ period: p.date, value: p.close }))
+  return (
+    <div>
+      <button type="button" className="price-history-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span>Price history</span>
+        <span className="metric-period">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <div className="price-history-detail">
+          <div className="price-history-changes">
+            <PriceChange label="1D" value={item.day_change_pct} />
+            <PriceChange label="3M" value={item.change_3m_pct} />
+            <PriceChange label="6M" value={item.change_6m_pct} />
+            <PriceChange label="1Y" value={item.change_1y_pct} />
+          </div>
+          {points.length >= 2 ? (
+            <MiniLine points={points} formatValue={(v) => `$${v.toFixed(2)}`} />
+          ) : (
+            <p className="muted">No price history yet.</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Dividends: annual per-share totals as a bar chart, with the
+// trailing-12-month yield beside the heading. A ticker the refresh
+// has not covered yet says so; a covered non-payer just says none.
+function DividendsSection({ item }) {
+  const annual = item.dividends || []
+  return (
+    <div className="dividends-section">
+      <p className="dividends-head">
+        <span>Dividends</span>
+        {item.dividend_yield_pct != null && (
+          <span>Yield (trailing 12 mo): <strong>{item.dividend_yield_pct.toFixed(2)}%</strong></span>
+        )}
+      </p>
+      {annual.length > 0 ? (
+        <MiniBars
+          points={annual.map((a) => ({ period: String(a.year), value: a.total }))}
+          formatValue={(v) => `$${v.toFixed(2)}`}
+        />
+      ) : (
+        <p className="muted">
+          {item.price != null
+            ? 'No dividends.'
+            : 'No dividends yet — the price refresh has not covered this ticker.'}
+        </p>
+      )}
+      <p className="muted">Source: Yahoo Finance (yfinance).</p>
+    </div>
+  )
+}
+
 function WatchlistCard({ item, onDelete, onRefresh, busy }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [open, setOpen] = useState(false)
@@ -174,9 +238,6 @@ function WatchlistCard({ item, onDelete, onRefresh, busy }) {
             {item.price != null ? (
               <>
                 <strong>${item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                <PriceChange label="1D" value={item.day_change_pct} />
-                <PriceChange label="6M" value={item.change_6m_pct} />
-                <PriceChange label="1Y" value={item.change_1y_pct} />
                 {item.price_date && <span className="muted">as of {item.price_date}</span>}
               </>
             ) : (
@@ -190,6 +251,8 @@ function WatchlistCard({ item, onDelete, onRefresh, busy }) {
               <span className="muted">{item.graham_note || 'No Graham number yet.'}</span>
             )}
           </p>
+          <PriceHistorySection item={item} />
+          <DividendsSection item={item} />
           <div className="watchlist-metrics">
             {METRIC_ORDER.filter((k) => item.metrics[k]).map((k) => (
               <MetricRow
@@ -375,7 +438,8 @@ export default function Watchlist() {
         <code>data.sec.gov/api/xbrl/companyfacts/CIK##########.json</code>{' '}
         (each card links to that company’s own facts URL). The Graham
         number comes from the Investment Tracker price feed (yfinance),
-        not EDGAR.
+        not EDGAR. Dividend history and the price-history line come
+        from that price feed too.
       </p>
     </section>
   )

@@ -114,6 +114,36 @@ def _backfill_price_history(db, yf, ticker, price_date):
         print(f"price backfill skipped for {ticker}: {e}", file=sys.stderr)
 
 
+def _refresh_watchlist_dividends(db, yf, tickers):
+    """Cache split-adjusted per-share dividend payments for watched
+    tickers in dividend_history (ticker, ex_date, amount).
+
+    yfinance's dividends series is indexed by ex-date and already
+    split-adjusted, so a payment history needs no adjustment of its
+    own. One yfinance call per ticker, same cadence as the price
+    refresh; a failure for one ticker never breaks the refresh or
+    the others. Non-payers simply store no rows."""
+    db.execute("CREATE TABLE IF NOT EXISTS dividend_history ("
+               "ticker TEXT NOT NULL, ex_date TEXT NOT NULL,"
+               " amount REAL NOT NULL,"
+               " PRIMARY KEY (ticker, ex_date))")
+    for t in tickers:
+        try:
+            divs = yf.Ticker(t).dividends
+            if divs is None or divs.empty:
+                continue
+            rows = [(t, str(idx.date()), round(float(v), 6))
+                    for idx, v in divs.items()]
+            if rows:
+                with db:
+                    db.executemany(
+                        "INSERT OR REPLACE INTO dividend_history"
+                        " VALUES (?,?,?)", rows)
+        except Exception as e:
+            print(f"dividend history skipped for {t}: {e}",
+                  file=sys.stderr)
+
+
 def read_holdings(db):
     """lots -> {ticker: {shares, cost (cash only), div_reinvested,
     sector}}, exactly as snapshot.py aggregated CleanData."""
@@ -351,6 +381,24 @@ def main():
         except Exception as e:
             print(f"watchlist refresh skipped: {e}", file=sys.stderr)
             watched = []
+
+    # Dividend history for the watchlist cards (all watched tickers,
+    # holdings included): one yfinance call each, cached in
+    # dividend_history. Guarded like the companion block above — a
+    # failure here never breaks the holdings refresh.
+    try:
+        has_watchlist = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table'"
+            " AND name='watchlist'").fetchone()
+        watched_all = ([r[0] for r in db.execute(
+            "SELECT ticker FROM watchlist")] if has_watchlist else [])
+    except sqlite3.Error:
+        watched_all = []
+    if watched_all:
+        try:
+            _refresh_watchlist_dividends(db, yf, watched_all)
+        except Exception as e:
+            print(f"dividend history skipped: {e}", file=sys.stderr)
     db.close()
 
     os.makedirs(os.path.join(BASE, "snapshots"), exist_ok=True)

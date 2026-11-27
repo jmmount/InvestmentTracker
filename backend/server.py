@@ -33,9 +33,11 @@ Endpoints:
                                    cash flow, quarterly revenue growth,
                                    return on equity, R&D share, net
                                    margin) plus the Graham number and
-                                   the current price with day, 6-month
-                                   and 1-year changes from market_data /
-                                   price_history, and the source citation
+                                   the current price with day, 3-month,
+                                   6-month and 1-year changes, the 1-year
+                                   price-history series and the 15-year
+                                   dividend history from the yfinance
+                                   refresh, and the source citation
   POST /api/watchlist            -> { ticker } — resolve the ticker to
                                    its CIK, fetch its EDGAR facts,
                                    compute the seven metrics and store
@@ -626,12 +628,14 @@ def handle_consult(body):
 # tickers row) and reads as null until then. The Graham number is read
 # from market_data — the tracker's own yfinance computation, never
 # recomputed from EDGAR — and is null until the refresh covers the
-# ticker. The card header's price, day change, 6-month and 1-year
-# changes come from the same feed: price and day change from
-# market_data, the 6M/1Y changes from price_history (the refresh
-# keeps a year of closes there; a missing history reads as
-# unavailable, never a guessed number). EDGAR has no prices and no
-# dividend history; the watchlist never claims otherwise.
+# ticker. The card's price, day change, 3-month, 6-month and
+# 1-year changes come from the same feed: price and day change
+# from market_data, the 3M/6M/1Y changes and the price-history
+# line from price_history (the refresh keeps two years of closes
+# there; a missing history reads as unavailable, never a guessed
+# number). Dividend history comes from the same yfinance refresh,
+# cached in dividend_history as split-adjusted per-share amounts
+# by ex-date. EDGAR has no prices and no dividend history.
 # ---------------------------------------------------------------------------
 
 WATCHLIST_CITATION = {
@@ -639,11 +643,13 @@ WATCHLIST_CITATION = {
     "fundamentals_endpoint":
         "data.sec.gov/api/xbrl/companyfacts/CIK##########.json",
     "graham": "Investment Tracker price feed (yfinance)",
+    "dividends": "Yahoo Finance (yfinance)",
     "note": ("The seven fundamentals on each card are computed from "
              "the company's filings via SEC EDGAR (endpoint above; "
              "each card links to that company's own facts URL). The "
              "Graham number comes from the tracker's price feed, "
-             "not EDGAR."),
+             "not EDGAR. Dividend history and the price-history line "
+             "come from the same price feed."),
 }
 
 
@@ -666,6 +672,13 @@ def ensure_watchlist_tables(db):
                "ticker TEXT PRIMARY KEY, name TEXT NOT NULL,"
                " edgar_url TEXT NOT NULL, fetched_at TEXT NOT NULL,"
                " metrics_json TEXT NOT NULL, notes_json TEXT NOT NULL)")
+    # Dividend history, cached by the twice-daily yfinance refresh
+    # (refresh_db.py creates this too — this only runs on a fresh
+    # watchlist, so an existing DB never sees this CREATE).
+    db.execute("CREATE TABLE IF NOT EXISTS dividend_history ("
+               "ticker TEXT NOT NULL, ex_date TEXT NOT NULL,"
+               " amount REAL NOT NULL,"
+               " PRIMARY KEY (ticker, ex_date))")
     db.commit()
 
 
@@ -717,6 +730,57 @@ def _price_change(db, ticker, price, close_date, months):
     return round2((price / row[1] - 1) * 100), row[0]
 
 
+def _watchlist_dividends(db, ticker, price, close_date):
+    """(annual_totals, trailing-12m yield %) from dividend_history.
+
+    Annual totals are split-adjusted per-share amounts summed per
+    calendar year, for the last 15 years starting at the first
+    payment year (a non-payer returns ([], None)). Yield is the
+    trailing-12-months sum over the latest price. A missing table
+    reads as no dividends yet — the refresh creates it."""
+    try:
+        rows = db.execute(
+            "SELECT ex_date, amount FROM dividend_history"
+            " WHERE ticker=? ORDER BY ex_date",
+            (ticker,)).fetchall()
+    except sqlite3.Error:
+        return [], None
+    if not rows:
+        return [], None
+    today = (close_date or datetime.now(ET).strftime("%Y-%m-%d"))
+    current_year = int(today[:4])
+    first_year = max(int(rows[0][0][:4]), current_year - 14)
+    totals = {}
+    for ex_date, amount in rows:
+        y = int(ex_date[:4])
+        if y >= first_year:
+            totals[y] = totals.get(y, 0.0) + amount
+    annual = [{"year": y, "total": round2(totals.get(y, 0.0))}
+              for y in range(first_year, current_year + 1)]
+    ttm = 0.0
+    if close_date:
+        start = _months_before(close_date, 12)
+        ttm = sum(a for d, a in rows if d > start)
+    yld = round2(ttm / price * 100) if price else None
+    return annual, yld
+
+
+def _watchlist_price_history(db, ticker, close_date):
+    """Last 1 year of daily closes [{date, close}] for the card's
+    price-history line. [] when the refresh has not covered the
+    ticker yet — the card says so instead of drawing a graph."""
+    if not close_date:
+        return []
+    try:
+        rows = db.execute(
+            "SELECT date, close FROM price_history WHERE ticker=?"
+            " AND date>=? ORDER BY date",
+            (ticker, _months_before(close_date, 12))).fetchall()
+    except sqlite3.Error:
+        return []
+    return [{"date": d, "close": c} for d, c in rows]
+
+
 def _watchlist_item(db, ticker, cik):
     """One watchlist card's payload: cached EDGAR metrics plus the
     sector (tickers table) and Graham number (market_data) resolved
@@ -729,9 +793,12 @@ def _watchlist_item(db, ticker, cik):
         return {"ticker": ticker, "cik": cik, "name": ticker,
                 "sector": None, "graham": None, "graham_note": None,
                 "price": None, "price_date": None,
-                "day_change_pct": None, "change_6m_pct": None,
+                "day_change_pct": None, "change_3m_pct": None,
+                "change_3m_ref": None, "change_6m_pct": None,
                 "change_6m_ref": None, "change_1y_pct": None,
                 "change_1y_ref": None,
+                "dividends": [], "dividend_yield_pct": None,
+                "price_history": [],
                 "edgar_url": None, "fetched_at": None,
                 "metrics": {}, "notes": ["Metrics not computed yet."]}
     sector = db.execute(
@@ -743,8 +810,11 @@ def _watchlist_item(db, ticker, cik):
         (ticker,)).fetchone()
     price = market[0] if market else None
     close_date = market[3] if market else None
+    change_3m, ref_3m = _price_change(db, ticker, price, close_date, 3)
     change_6m, ref_6m = _price_change(db, ticker, price, close_date, 6)
     change_1y, ref_1y = _price_change(db, ticker, price, close_date, 12)
+    annual, yld = _watchlist_dividends(db, ticker, price, close_date)
+    hist = _watchlist_price_history(db, ticker, close_date)
     return {"ticker": ticker, "cik": cik, "name": m[0],
             "sector": sector[0] if sector else None,
             "graham": market[4] if market else None,
@@ -753,8 +823,11 @@ def _watchlist_item(db, ticker, cik):
                             "has not covered this ticker."),
             "price": price, "price_date": close_date,
             "day_change_pct": market[2] if market else None,
+            "change_3m_pct": change_3m, "change_3m_ref": ref_3m,
             "change_6m_pct": change_6m, "change_6m_ref": ref_6m,
             "change_1y_pct": change_1y, "change_1y_ref": ref_1y,
+            "dividends": annual, "dividend_yield_pct": yld,
+            "price_history": hist,
             "edgar_url": m[1], "fetched_at": m[2],
             "metrics": json.loads(m[3]), "notes": json.loads(m[4])}
 
@@ -880,6 +953,11 @@ def handle_watchlist_delete(ticker):
         with db:
             db.execute("DELETE FROM watchlist_metrics WHERE ticker=?",
                        (ticker,))
+            try:
+                db.execute("DELETE FROM dividend_history WHERE ticker=?",
+                           (ticker,))
+            except sqlite3.Error:
+                pass  # table only exists once the refresh stored dividends
             cur = db.execute("DELETE FROM watchlist WHERE ticker=?",
                              (ticker,))
         if cur.rowcount == 0:
