@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { API_BASE } from '../config.js'
-import { MiniBars, MiniLine, sectorColor } from '../components/charts.jsx'
+import { MiniBars, MiniLine } from '../components/charts.jsx'
 
-// Watchlist view: tickers Jason adds by symbol, one card each with the
-// EDGAR fundamentals (latest value plus the history behind it) and the
-// Graham number, plus the current price with day, 6-month and 1-year
-// changes in the card header. Revenue growth shows as two figures:
+// Watchlist view: tickers Jason adds by symbol, one accordion card
+// each — collapsed it shows ticker, company name, sector and price;
+// tap the header to expand the day / 6-month / 1-year changes, the
+// Graham number, and the EDGAR fundamentals (latest value plus the
+// history behind it). Revenue growth shows as two figures:
 // the 10-year revenue CAGR (whose history is the annual revenue
 // series, shown as a line chart on click) and quarterly YoY for the
 // last four quarters (shown as a bar chart on click); the other
@@ -128,75 +129,90 @@ function PriceChange({ label, value }) {
 
 function WatchlistCard({ item, onDelete, onRefresh, busy }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [open, setOpen] = useState(false)
   return (
     <article className="holding watchlist-card">
-      <div className="holding-head">
-        <span className="holding-ticker">{item.ticker}</span>
-        <span className="holding-head-right">
-          {item.sector && (
-            <span className="chip-sector" style={{ borderColor: sectorColor(item.sector), color: sectorColor(item.sector) }}>
-              {item.sector}
-            </span>
-          )}
-          <span className="watchlist-icon-actions">
-            {confirmDelete ? (
-              <>
-                <button type="button" className="icon-confirm danger" onClick={onDelete} disabled={busy}>
-                  Delete
-                </button>
-                <button type="button" className="icon-confirm" onClick={() => setConfirmDelete(false)} disabled={busy}>
-                  Cancel
-                </button>
-              </>
-            ) : (
-              <>
-                <button type="button" className="icon-btn" onClick={onRefresh} disabled={busy} aria-label={`Refresh ${item.ticker}`} title="Refresh from EDGAR">
-                  ↻
-                </button>
-                <button type="button" className="icon-btn" onClick={() => setConfirmDelete(true)} aria-label={`Delete ${item.ticker}`} title="Delete from watchlist">
-                  ×
-                </button>
-              </>
-            )}
+      <div className="watchlist-card-head">
+        <button
+          type="button"
+          className="watchlist-toggle"
+          onClick={() => setOpen(!open)}
+          aria-expanded={open}
+        >
+          <span className="watchlist-toggle-main">
+            <span className="holding-ticker">{item.ticker}</span>
+            <span className="holding-name">{item.name}</span>
+            {item.sector && <span className="watchlist-sector">{item.sector}</span>}
           </span>
+          <span className="watchlist-toggle-price">
+            {item.price != null ? (
+              <strong>${item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            ) : (
+              <span className="muted">—</span>
+            )}
+            <span className="watchlist-chevron" aria-hidden="true">{open ? '▾' : '▸'}</span>
+          </span>
+        </button>
+        <span className="watchlist-icon-actions">
+          {confirmDelete ? (
+            <>
+              <button type="button" className="icon-confirm danger" onClick={onDelete} disabled={busy}>
+                Delete
+              </button>
+              <button type="button" className="icon-confirm" onClick={() => setConfirmDelete(false)} disabled={busy}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="icon-btn" onClick={onRefresh} disabled={busy} aria-label={`Refresh ${item.ticker}`} title="Refresh from EDGAR">
+                ↻
+              </button>
+              <button type="button" className="icon-btn" onClick={() => setConfirmDelete(true)} aria-label={`Delete ${item.ticker}`} title="Delete from watchlist">
+                ×
+              </button>
+            </>
+          )}
         </span>
       </div>
-      <p className="holding-name">{item.name}</p>
-      <p className="holding-foot watchlist-price">
-        {item.price != null ? (
-          <>
-            <strong>${item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-            <PriceChange label="1D" value={item.day_change_pct} />
-            <PriceChange label="6M" value={item.change_6m_pct} />
-            <PriceChange label="1Y" value={item.change_1y_pct} />
-            {item.price_date && <span className="muted">as of {item.price_date}</span>}
-          </>
-        ) : (
-          <span className="muted">No price yet — the price refresh has not covered this ticker.</span>
-        )}
-      </p>
-      <p className="holding-foot">
-        {item.graham != null ? (
-          <>Graham number: <strong>${item.graham.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></>
-        ) : (
-          <span className="muted">{item.graham_note || 'No Graham number yet.'}</span>
-        )}
-      </p>
-      <div className="watchlist-metrics">
-        {METRIC_ORDER.filter((k) => item.metrics[k]).map((k) => (
-          <MetricRow
-            key={k}
-            metric={item.metrics[k]}
-            chart={k === 'revenue_growth_yoy' ? 'bars' : k === 'revenue_cagr_10y' ? 'line' : undefined}
-          />
-        ))}
-      </div>
-      <p className="holding-foot">
-        {item.edgar_url && (
-          <a href={item.edgar_url} target="_blank" rel="noreferrer">EDGAR facts</a>
-        )}
-        {item.fetched_at && <span className="muted">Fetched {item.fetched_at}</span>}
-      </p>
+      {open && (
+        <div className="watchlist-detail">
+          <p className="holding-foot watchlist-price">
+            {item.price != null ? (
+              <>
+                <PriceChange label="1D" value={item.day_change_pct} />
+                <PriceChange label="6M" value={item.change_6m_pct} />
+                <PriceChange label="1Y" value={item.change_1y_pct} />
+                {item.price_date && <span className="muted">as of {item.price_date}</span>}
+              </>
+            ) : (
+              <span className="muted">No price yet — the price refresh has not covered this ticker.</span>
+            )}
+          </p>
+          <p className="holding-foot">
+            {item.graham != null ? (
+              <>Graham number: <strong>${item.graham.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></>
+            ) : (
+              <span className="muted">{item.graham_note || 'No Graham number yet.'}</span>
+            )}
+          </p>
+          <div className="watchlist-metrics">
+            {METRIC_ORDER.filter((k) => item.metrics[k]).map((k) => (
+              <MetricRow
+                key={k}
+                metric={item.metrics[k]}
+                chart={k === 'revenue_growth_yoy' ? 'bars' : k === 'revenue_cagr_10y' ? 'line' : undefined}
+              />
+            ))}
+          </div>
+          <p className="holding-foot">
+            {item.edgar_url && (
+              <a href={item.edgar_url} target="_blank" rel="noreferrer">EDGAR facts</a>
+            )}
+            {item.fetched_at && <span className="muted">Fetched {item.fetched_at}</span>}
+          </p>
+        </div>
+      )}
     </article>
   )
 }
