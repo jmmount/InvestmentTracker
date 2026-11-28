@@ -14,8 +14,9 @@ import { MiniBars, MiniLine } from '../components/charts.jsx'
 // series, shown as a line chart on click) and quarterly YoY for the
 // last four quarters (shown as a bar chart on click); the other
 // metrics expand to a history table. A reference dropdown at the top
-// of the page explains the five headline metrics (name, formula,
-// narrative — Jason's wording). Fundamentals come from
+// of the page explains the eight headline metrics (name, formula,
+// narrative — the first five in Jason's wording, the last three drafted
+// the same way and approved by him). Fundamentals come from
 // SEC EDGAR; price, changes and the Graham number come from the
 // tracker's own price feed — the citation at the bottom of this view
 // says exactly that, and each card links to its company's own EDGAR
@@ -35,8 +36,10 @@ const METRIC_ORDER = [
   'net_margin',
 ]
 
-// Reference definitions for the five headline metrics, in Jason's
-// wording verbatim. They name Yahoo Finance tabs as places to find
+// Reference definitions for the eight headline metrics. The first five
+// are in Jason's wording verbatim; the last three (revenue CAGR, R&D
+// share, net margin) were drafted the same way and approved by him
+// Nov 27, 2026. They name Yahoo Finance tabs as places to find
 // the metrics — the numbers on the cards still come from SEC EDGAR
 // (see the citation at the bottom of the page), never from Yahoo.
 const REFERENCE_CARDS = [
@@ -64,6 +67,21 @@ const REFERENCE_CARDS = [
     name: 'Return on Equity (ROE, TTM)',
     formula: 'Return on Equity = Net Income / Average Stockholders\' Equity',
     narrative: "ROE measures how much profit a company generates for each dollar of shareholders' equity, listed on Yahoo Finance's Statistics tab. For growth potential, a solid, consistent ROE indicates that management deploys capital effectively into profitable opportunities. For financial health, always cross-check ROE against Total Debt-to-Equity: high debt shrinks the equity base and can inflate ROE artificially even when underlying operational health is average.",
+  },
+  {
+    name: 'Revenue CAGR (10-yr)',
+    formula: 'Revenue CAGR (10-yr) = (Revenue Latest Year / Revenue 10 Years Earlier)^(1/10) − 1',
+    narrative: "The 10-year revenue CAGR is the smoothed annual growth rate of a company's sales over a decade — the steady rate that would take revenue from ten years ago to today. You can check the annual revenue series on the Yahoo Finance Income Statement. For growth potential, a high sustained CAGR shows the business compounding rather than growing in fits and starts. For financial health, read it against the endpoints: a depressed base year ten years ago can flatter the number, and revenue growth alone says nothing about profitability — pair it with net margin before concluding the growth is any good.",
+  },
+  {
+    name: 'R&D as Share of Revenue',
+    formula: 'R&D as Share of Revenue = Research & Development Expense / Revenue',
+    narrative: 'This shows how much of each revenue dollar a company plows back into research and development. You can find R&D expense on the Yahoo Finance Income Statement. For growth potential, a steady R&D share funds the next products in the pipeline — in tech and pharma, underinvestment today is a thin pipeline tomorrow. For financial health, the right level depends on the sector: a software company at 20% and a retailer at 1% can both be sensible, so compare against peers, not an absolute number, and watch whether heavy spending is actually producing revenue growth.',
+  },
+  {
+    name: 'Net Margin',
+    formula: 'Net Margin = Net Income / Revenue',
+    narrative: "Net margin is the profit a company keeps from each dollar of sales after all costs, interest, and taxes. You can find net income and revenue on the Yahoo Finance Income Statement. For financial health, a stable or expanding margin signals pricing power and cost control, while a shrinking one warns that growth is being bought at the expense of profit. For growth potential, high margins fund reinvestment from within — the company can grow without borrowing or diluting shareholders. One caution: a single year's margin can be distorted by one-off gains or charges, so look at the trend across years rather than one figure alone.",
   },
 ]
 
